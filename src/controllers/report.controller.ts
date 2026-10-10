@@ -5,15 +5,41 @@ import AttendanceService from '../models/Attendance.service';
 import MemberService from '../models/Member.service';
 import ReportService from '../models/Report.service';
 import BranchService from '../models/Branch.service';
-import { Attendance } from '../libs/types/attendance';
-import { isBossOrAdmin, hasManagerPermission } from '../libs/utils/permission';
+import { isBossOrAdmin, hasManagerPermission, isManagerOf } from '../libs/utils/permission';
 import { branchPickerView, monthPickerView } from '../views/index';
+import { Attendance } from '../libs/types/attendance';
 import { getMonthsBetween } from '../libs/utils/date';
+import { log } from 'node:console';
 
 const attendanceService = new AttendanceService();
 const memberService = new MemberService();
 const reportService = new ReportService();
 const branchService = new BranchService();
+
+async function sendBranchReport(ctx: MyContext, branchId: Types.ObjectId, year: number, month: number) {
+    const branch = await branchService.getBranchById(branchId);
+    if (!branch) {
+        await ctx.reply("Filial topilmadi.");
+        return;
+    }
+
+    const memberIds = await attendanceService.getMemberIdsForBranchAndMonth(branchId, year, month);
+    if (memberIds.length === 0) {
+        await ctx.reply("Bu oy uchun ma'lumot topilmadi.");
+        return;
+    }
+
+    const members = await memberService.getMembersByIds(memberIds);
+    const shiftsByMember = new Map<string, Attendance[]>();
+    await Promise.all(members.map(async (m) => {
+        // scoped to this branch — a member's shifts at other branches don't belong in this report
+        const shifts = await attendanceService.getShiftsForMemberBranchAndMonth(m._id, branchId, year, month);
+        shiftsByMember.set(m._id.toString(), shifts);
+    }));
+
+    const buffer = await reportService.generateBranchReportFile(members, shiftsByMember, year, month);
+    await ctx.replyWithDocument(new InputFile(buffer, `${branch.name}_${year}-${month}.xlsx`));
+}
 
 export function reportController(bot: Bot<MyContext>) {
     bot.hears("📊 Hisobot", async (ctx) => {
@@ -45,45 +71,48 @@ export function reportController(bot: Bot<MyContext>) {
         }
 
         const branches = await branchService.getBranchesByIds(branchIds);
-        const view = branchPickerView(branches, year, month);
+        const view = branchPickerView(branches, year, month, "personal_report");
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
 
-    bot.hears("🏢 Filial hisoboti", async (ctx) => {
+    bot.hears("📊 Filial hisoboti", async (ctx) => {
         if (!ctx.from) return;
-        ctx.session.awaitingAction = "get_branch_report";
-        ctx.session.awaitingSince = Date.now();
-        
+
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!member) return;
 
-        if (!hasManagerPermission(member) && !isBossOrAdmin(member)) {
-            await ctx.reply("Sizda bu buyruq uchun ruxsat yo'q.");
-            return;
-        }
-        else if (hasManagerPermission(member)) {
-            const branchId = member.branchId!;
-            const branch = await branchService.getBranchById(branchId);
-        }
-        else if (isBossOrAdmin(member)) {
-            branchPickerView(await branchService.getAllBranches(), new Date().getFullYear(), new Date().getMonth() + 1, "get_branch_report");
-        }
-       
         const now = new Date();
         const year = now.getFullYear();
         const month = now.getMonth() + 1;
 
-        const memberIds = await attendanceService.getMemberIdsForBranchAndMonth(branchId, year, month);
-        const members = await memberService.getMembersByIds(memberIds);
+        if (hasManagerPermission(member)) {
+            await sendBranchReport(ctx, member.branchId!, year, month);
+        } else if (isBossOrAdmin(member)) {
+            console.log("boos is accessing reports!")
+            const view = branchPickerView(await branchService.getAllBranches(), year, month, "branch_report");
+            await ctx.reply(view.text, { reply_markup: view.keyboard });
+        } else {
+            await ctx.reply("Sizda bu buyruq uchun ruxsat yo'q.");
+        }
+    });
 
-        const shiftsByMember = new Map<string, Attendance[]>();
-        for (const m of members) {
-            const shifts = await attendanceService.getMemberReport(m.telegramId, month, year);
-            shiftsByMember.set(m._id.toString(), shifts);
+    bot.callbackQuery(/^branch_report:/, async (ctx) => {
+        await ctx.answerCallbackQuery();
+        if (!ctx.from) return;
+
+        const member = await memberService.getMemberByTelegramId(ctx.from.id);
+        if (!member) return;
+
+        const [branchIdStr, year, month] = ctx.callbackQuery.data.split(":")[1].split(",");
+        if (!Types.ObjectId.isValid(branchIdStr)) return;
+
+        // callback data is client-controlled, so re-check permission for the requested branch
+        if (!isBossOrAdmin(member) && !isManagerOf(member, branchIdStr)) {
+            await ctx.reply("Sizda bu buyruq uchun ruxsat yo'q.");
+            return;
         }
 
-        const buffer = await reportService.generateBranchReportFile(members, shiftsByMember, year, month);
-        await ctx.replyWithDocument(new InputFile(buffer, `${branch!.name}_${year}-${month}.xlsx`));
+        await sendBranchReport(ctx, new Types.ObjectId(branchIdStr), Number(year), Number(month));
     });
 
     bot.hears("🗂 Eski hisobotlar", async (ctx) => {
@@ -135,7 +164,7 @@ export function reportController(bot: Bot<MyContext>) {
             return;
         }
         const branches = await branchService.getBranchesByIds(branchIds);
-        const view = branchPickerView(branches, year, month);
+        const view = branchPickerView(branches, year, month, "personal_report");
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
 

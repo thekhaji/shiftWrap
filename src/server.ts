@@ -10,7 +10,7 @@ import { reportController } from './controllers/report.controller';
 import { EditableMemberField } from './libs/types/member';
 
 export interface SessionData {
-    awaitingAction?: "checkin" | "checkout" | "register_branch_name" | "register_branch_location" | "edit_member_field" | "get_branch_report";
+    awaitingAction?: "checkin" | "checkout" | "register_branch_name" | "register_branch_location" | "edit_member_field";
     awaitingSince?: number;
     pendingBranchName?: string;
     editingMemberTelegramId?: number;
@@ -24,9 +24,9 @@ mongoose.connect(process.env.MONGO_URL as string)
     console.log("MongoDB connected successfully");
     const bot = new Bot<MyContext>(process.env.BOT_TOKEN as string);
     bot.use(session({ initial: (): SessionData => ({}) }));
+    navigationController(bot); // first: its middleware resets pending prompts on menu taps
     memberController(bot);
     attendanceController(bot);
-    navigationController(bot);
     branchController(bot);
     reportController(bot);
     bot.start();

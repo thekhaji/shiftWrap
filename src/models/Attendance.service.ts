@@ -6,6 +6,8 @@ import { Types } from 'mongoose';
 import { nowInSeoul } from '../libs/utils/time';
 import { monthRange } from '../libs/utils/date';
 
+const MAX_SHIFT_HOURS = 20;
+
 class AttendanceService {
     private readonly attendanceModel = AttendanceModel;
     private readonly memberModel = MemberModel;
@@ -14,6 +16,9 @@ class AttendanceService {
         const member = await this.memberModel.findOne({ telegramId });
         if (!member) throw new Errors(HttpCode.NOT_FOUND, Message.NO_DATA_FOUND);
         if (!member.hourlyRate) throw new Errors(HttpCode.NOT_MODIFIED, Message.NO_RATE_SET);
+
+        // a forgotten checkout must not block the unique open-shift index forever
+        await this.getFreshOpenShift(member._id);
 
         try {
             const shift = await this.attendanceModel.create({
@@ -33,14 +38,8 @@ class AttendanceService {
         const member = await this.memberModel.findOne({ telegramId });
         if (!member) throw new Errors(HttpCode.NOT_FOUND, Message.NO_DATA_FOUND);
 
-        const open = await this.getOpenShift(member._id);
-        
+        const open = await this.getFreshOpenShift(member._id);
         if (!open) throw new Errors(HttpCode.NOT_FOUND, Message.NO_OPEN_SHIFT);
-        
-        const elapsedMs = Date.now() - new Date(open.checkIn).getTime();
-        const elapsedHours = elapsedMs / (1000 * 60 * 60);
-
-        if (elapsedHours >= 20) throw new Errors(HttpCode.NOT_FOUND, Message.NO_OPEN_SHIFT);
 
         const closed = await this.attendanceModel.findByIdAndUpdate(
             open._id,
@@ -52,6 +51,21 @@ class AttendanceService {
 
     async getOpenShift(memberId: Types.ObjectId) {
         return this.attendanceModel.findOne({ memberId, checkOut: { $exists: false } }).lean();
+    }
+
+    // Returns the member's open shift, or null. A shift open for 20h+ is treated as a
+    // forgotten checkout: it is closed with checkOut = null (field present, so it leaves the
+    // open-shift unique index, and reports still show it as "No check-out").
+    private async getFreshOpenShift(memberId: Types.ObjectId) {
+        const open = await this.getOpenShift(memberId);
+        if (!open) return null;
+
+        // checkIn is stored as Seoul wall-clock labeled as UTC, so compare against the same clock
+        const elapsedHours = (nowInSeoul().getTime() - new Date(open.checkIn).getTime()) / (1000 * 60 * 60);
+        if (elapsedHours < MAX_SHIFT_HOURS) return open;
+
+        await this.attendanceModel.updateOne({ _id: open._id }, { $set: { checkOut: null } });
+        return null;
     }
 
     async getMemberReport(telegramId: number, month: number, year: number): Promise<Attendance[]> {
