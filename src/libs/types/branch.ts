@@ -5,6 +5,12 @@ export interface Branch {
     name: string;
     lat: number;
     lng: number;
+    orderGroupId?: number;
+    threadIds?:{
+        "order": number;
+        "ordered": number;
+        "arrived": number;
+    };
     createdAt: Date;
     updatedAt: Date;
 }

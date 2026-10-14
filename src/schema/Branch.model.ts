@@ -15,7 +15,21 @@ const branchSchema = new Schema(
             type: Number,
             required: true
         },
-},
+        orderGroupId: {
+            type: Number,
+        },
+        threadIds: {
+            order: {
+                type: Number,
+            },
+            ordered: {
+                type: Number,
+            },
+            arrived: {
+                type: Number,
+            }
+        },
+    },
     { timestamps: true }
 );
 

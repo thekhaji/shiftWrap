@@ -8,6 +8,7 @@ import { navigationController } from './controllers/navigation.controller';
 import { branchController } from './controllers/branch.controller';
 import { reportController } from './controllers/report.controller';
 import { EditableMemberField } from './libs/types/member';
+import { debugController } from './controllers/debug.controller';
 
 export interface SessionData {
     awaitingAction?: "checkin" | "checkout" | "register_branch_name" | "register_branch_location" | "edit_member_field";
@@ -29,6 +30,7 @@ mongoose.connect(process.env.MONGO_URL as string)
     attendanceController(bot);
     branchController(bot);
     reportController(bot);
+    debugController(bot);
     bot.start();
 })
 .catch((err)=>{
