@@ -10,6 +10,10 @@ class MemberService {
         this.memberModel = MemberModel;
     }
 
+    async getMemberById(memberId: Types.ObjectId): Promise<Member | null> {
+        return this.memberModel.findById(memberId).lean<Member>();
+    }
+
     async getMemberByTelegramId(telegramId: number): Promise<Member | null> {
         const member = await this.memberModel.findOne({ telegramId });
         return member ? (member.toObject() as Member) : null;

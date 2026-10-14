@@ -25,6 +25,7 @@ function mainMenuKeyboard(member?: Member) {
         return keyboard;
     }
     else if (member && (hasManagerPermission(member))) {
+        employeeKeyboard.row().text("📦 Ombor");
         employeeKeyboard.row().text("📊 Filial hisoboti");
         employeeKeyboard.row().text("👥 Xodimlar ma'lumotlarini sozlash");
 

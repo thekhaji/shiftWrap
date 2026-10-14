@@ -53,6 +53,23 @@ class OrderService {
         await this.orderModel.deleteOne({ _id: draftId, status: OrderStatus.DRAFT });
     }
 
+    // ORDER -> DRAFT, used when posting to the group failed
+    async revertToDraft(orderId: Types.ObjectId): Promise<void> {
+        await this.orderModel.updateOne(
+            { _id: orderId, status: OrderStatus.ORDER },
+            { status: OrderStatus.DRAFT }
+        );
+    }
+
+    // delete a draft without creating one first
+    async cancelDraftFor(memberId: Types.ObjectId, branchId: Types.ObjectId): Promise<void> {
+        await this.orderModel.deleteOne({
+            requestedBy: memberId,
+            branchId,
+            status: OrderStatus.DRAFT,
+        });
+    }
+
     // atomic moves: a double tap returns null the second time
     async markOrdered(orderId: Types.ObjectId, memberId: Types.ObjectId): Promise<Order | null> {
         return this.orderModel.findOneAndUpdate(

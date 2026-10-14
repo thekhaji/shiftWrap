@@ -9,6 +9,8 @@ import { branchController } from './controllers/branch.controller';
 import { reportController } from './controllers/report.controller';
 import { EditableMemberField } from './libs/types/member';
 import { debugController } from './controllers/debug.controller';
+import { orderController } from './controllers/order.controller';
+import { productController } from './controllers/product.controller';
 
 export interface SessionData {
     awaitingAction?: "checkin" | "checkout" | "register_branch_name" | "register_branch_location" | "edit_member_field";
@@ -16,6 +18,14 @@ export interface SessionData {
     pendingBranchName?: string;
     editingMemberTelegramId?: number;
     editingField?: EditableMemberField;
+    addProduct?: {
+        step: 'name' | 'photo' | 'link' | 'note';
+        branchId: string;           // ObjectId stored as a string
+        name?: string;
+        imageFileId?: string;
+        orderLink?: string;
+        orderNote?: string;
+    };
 }
 
 export type MyContext = Context & SessionFlavor<SessionData>;
@@ -31,6 +41,8 @@ mongoose.connect(process.env.MONGO_URL as string)
     branchController(bot);
     reportController(bot);
     debugController(bot);
+    orderController(bot);
+    productController(bot);
     bot.start();
 })
 .catch((err)=>{
