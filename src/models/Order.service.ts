@@ -40,20 +40,39 @@ class OrderService {
         return added;
     }
 
-    // DRAFT -> ORDER, only if there is at least one item
-    async submitDraft(draftId: Types.ObjectId): Promise<Order | null> {
-        return this.orderModel.findOneAndUpdate(
-            { _id: draftId, status: OrderStatus.DRAFT, 'items.0': { $exists: true } },
-            { status: OrderStatus.ORDER },
-            { new: true }
-        ).lean<Order>();
+    // DRAFT -> one ORDER per product, so the boss can mark each product separately.
+    // The basket is consumed; returns [] if it was empty or already submitted.
+    async submitDraft(draftId: Types.ObjectId): Promise<Order[]> {
+        const draft = await this.orderModel.findOneAndDelete({
+            _id: draftId,
+            status: OrderStatus.DRAFT,
+            'items.0': { $exists: true },
+        }).lean<Order>();
+        if (!draft) return [];
+
+        const docs = await this.orderModel.insertMany(
+            draft.items.map(item => ({
+                branchId: draft.branchId,
+                requestedBy: draft.requestedBy,
+                status: OrderStatus.ORDER,
+                items: [item],
+            }))
+        );
+        return docs.map(d => d.toObject() as Order);
     }
 
-    // ORDER -> DRAFT, used when posting to the group failed
-    async revertToDraft(orderId: Types.ObjectId): Promise<void> {
+    // posting to the group failed: drop these orders and put their products back in the basket
+    async restoreToDraft(failed: Order[]): Promise<void> {
+        if (failed.length === 0) return;
+        const { requestedBy, branchId } = failed[0];
+        await this.orderModel.deleteMany({
+            _id: { $in: failed.map(o => o._id) },
+            status: OrderStatus.ORDER,
+        });
+        const draft = await this.getOrCreateDraft(requestedBy, branchId);
         await this.orderModel.updateOne(
-            { _id: orderId, status: OrderStatus.ORDER },
-            { status: OrderStatus.DRAFT }
+            { _id: draft._id },
+            { $push: { items: { $each: failed.flatMap(o => o.items) } } }
         );
     }
 

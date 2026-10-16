@@ -160,34 +160,39 @@ export function orderController(bot: Bot<MyContext>) {
             return;
         }
         const draft = await orderService.getOrCreateDraft(member._id, member.branchId);
-        const order = await orderService.submitDraft(draft._id);
-        if (!order) {
+        const orders = await orderService.submitDraft(draft._id);
+        if (orders.length === 0) {
             await ctx.answerCallbackQuery({ text: t(ctx.lang, 'order.selectOne'), show_alert: true });
             return;
         }
 
-        const products = await productService.getProductsByIds(order.items.map(i => i.productId));
-        const view = orderMessageView(order, products, member.name);
-
-        let sent;
-        try {
-            sent = await ctx.api.sendMessage(branch.orderGroupId, view.text, {
-                message_thread_id: branch.threadIds.order,
-                reply_markup: view.keyboard,
-            });
-        } catch (err) {
-            console.error("send order to group failed:", err);
-            await orderService.revertToDraft(order._id); // selection survives, manager can retry
-            await ctx.answerCallbackQuery({
-                text: t(ctx.lang, 'order.sendFailed'),
-                show_alert: true,
-            });
-            return;
+        // one group message per product
+        const failed: Order[] = [];
+        for (const order of orders) {
+            try {
+                const products = await productService.getProductsByIds(order.items.map(i => i.productId));
+                const view = orderMessageView(order, products, member.name);
+                const sent = await ctx.api.sendMessage(branch.orderGroupId, view.text, {
+                    message_thread_id: branch.threadIds.order,
+                    reply_markup: view.keyboard,
+                });
+                await orderService.setGroupMessageId(order._id, sent.message_id);
+            } catch (err) {
+                console.error("send order to group failed:", err);
+                failed.push(order);
+            }
         }
 
-        await orderService.setGroupMessageId(order._id, sent.message_id);
+        if (failed.length > 0) {
+            await orderService.restoreToDraft(failed); // those products stay selected, manager can retry
+            if (failed.length === orders.length) {
+                await ctx.answerCallbackQuery({ text: t(ctx.lang, 'order.sendFailed'), show_alert: true });
+                return;
+            }
+        }
+
         await clearBasket(ctx);
-        await ctx.reply(t(ctx.lang, 'order.sent'));
+        await ctx.reply(t(ctx.lang, failed.length > 0 ? 'order.sendFailed' : 'order.sent'));
         await ctx.answerCallbackQuery();
     });
 
