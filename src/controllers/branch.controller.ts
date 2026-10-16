@@ -7,21 +7,22 @@ import Errors from '../libs/Errors';
 import { MemberType } from '../libs/enums/member.enum';
 import { isBossOrAdmin } from '../libs/utils/permission';
 import { Types } from 'mongoose';
+import { allLabels, errorText, t } from '../libs/i18n';
 
 const branchService = new BranchService();
 const memberService = new MemberService();
 
 export function branchController(bot: Bot<MyContext>) {
-    bot.hears("🏢 Filial qo'shish", async (ctx) => {
+    bot.hears(allLabels('menu.addBranch'), async (ctx) => {
         if (!ctx.from) return;
         const actor = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!actor || !isBossOrAdmin(actor)) {
-            await ctx.reply("Sizda bu buyruq uchun ruxsat yo'q.");
+            await ctx.reply(t(ctx.lang, 'common.noPermission'));
             return;
         }
         ctx.session.awaitingAction = "register_branch_name";
         ctx.session.awaitingSince = Date.now();
-        const view = askBranchNameView();
+        const view = askBranchNameView(ctx.lang);
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
 
@@ -35,13 +36,13 @@ export function branchController(bot: Bot<MyContext>) {
         ctx.session.awaitingSince = undefined;
 
         if (expired) {
-            await ctx.reply("Vaqt tugadi. Qaytadan urinib ko'ring.");
+            await ctx.reply(t(ctx.lang, 'common.timeout'));
             return;
         }
 
         const name = ctx.message.text.trim();
         if (!name) {
-            await ctx.reply("Filial nomi bo'sh bo'lishi mumkin emas. Qaytadan urinib ko'ring.");
+            await ctx.reply(t(ctx.lang, 'branch.nameEmpty'));
             return;
         }
 
@@ -49,7 +50,7 @@ export function branchController(bot: Bot<MyContext>) {
         ctx.session.awaitingAction = "register_branch_location";
         ctx.session.awaitingSince = Date.now();
 
-        const view = askLocationView();
+        const view = askLocationView(ctx.lang);
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
 
@@ -65,7 +66,7 @@ export function branchController(bot: Bot<MyContext>) {
         ctx.session.pendingBranchName = undefined;
 
         if (expired || !name) {
-            await ctx.reply("Vaqt tugadi. Qaytadan urinib ko'ring.");
+            await ctx.reply(t(ctx.lang, 'common.timeout'));
             return;
         }
 
@@ -73,7 +74,7 @@ export function branchController(bot: Bot<MyContext>) {
 
         try {
             const branch = await branchService.createBranch({ name, lat: latitude, lng: longitude });
-            const view = branchRegisteredView(branch);
+            const view = branchRegisteredView(ctx.lang, branch);
             await ctx.reply(view.text);
 
             if (ctx.from) {
@@ -85,29 +86,29 @@ export function branchController(bot: Bot<MyContext>) {
             }
         } catch (err) {
             if (err instanceof Errors) {
-                await ctx.reply(err.message);
+                await ctx.reply(errorText(ctx.lang, err.message));
             } else {
                 console.error("branch registration error:", err);
-                await ctx.reply("Xatolik yuz berdi.");
+                await ctx.reply(t(ctx.lang, 'common.errorShort'));
             }
         }
     });
 
     // ---- appoint a branch manager (boss/admin only) ----
 
-    bot.hears("👔 Filialga boshqaruvchi tayinlash", async (ctx) => {
+    bot.hears(allLabels('menu.assignManager'), async (ctx) => {
         if (!ctx.from) return;
         const actor = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!actor || !isBossOrAdmin(actor)) {
-            await ctx.reply("Sizda bu buyruq uchun ruxsat yo'q.");
+            await ctx.reply(t(ctx.lang, 'common.noPermission'));
             return;
         }
         const branches = await branchService.getAllBranches();
         if (branches.length === 0) {
-            await ctx.reply("Hali filiallar qo'shilmagan.");
+            await ctx.reply(t(ctx.lang, 'branch.none'));
             return;
         }
-        const view = managerBranchPickerView(branches);
+        const view = managerBranchPickerView(ctx.lang, branches);
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
 
@@ -115,23 +116,23 @@ export function branchController(bot: Bot<MyContext>) {
         const actor = await memberService.getMemberByTelegramId(ctx.from.id);
         const branchId = ctx.callbackQuery.data.split(":")[1];
         if (!actor || !isBossOrAdmin(actor) || !Types.ObjectId.isValid(branchId)) {
-            await ctx.answerCallbackQuery({ text: "Ruxsat yo'q." });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
             return;
         }
         const branch = await branchService.getBranchById(new Types.ObjectId(branchId));
         if (!branch) {
-            await ctx.answerCallbackQuery({ text: "Filial topilmadi." });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.branchNotFound') });
             return;
         }
         const candidates = (await memberService.getAllMembers())
             .filter(m => m.type === MemberType.USER || m.type === MemberType.MANAGER)
             .sort((a, b) => a.name.localeCompare(b.name));
         if (candidates.length === 0) {
-            await ctx.answerCallbackQuery({ text: "Tayinlash uchun xodimlar topilmadi.", show_alert: true });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'mgr.noCandidates'), show_alert: true });
             return;
         }
         await ctx.answerCallbackQuery();
-        const view = managerCandidatePickerView(branch, candidates);
+        const view = managerCandidatePickerView(ctx.lang, branch, candidates);
         await ctx.editMessageText(view.text, { reply_markup: view.keyboard });
     });
 
@@ -139,17 +140,17 @@ export function branchController(bot: Bot<MyContext>) {
         const actor = await memberService.getMemberByTelegramId(ctx.from.id);
         const [branchId, telegramId] = ctx.callbackQuery.data.split(":")[1].split(",");
         if (!actor || !isBossOrAdmin(actor) || !Types.ObjectId.isValid(branchId)) {
-            await ctx.answerCallbackQuery({ text: "Ruxsat yo'q." });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
             return;
         }
         const branch = await branchService.getBranchById(new Types.ObjectId(branchId));
         const target = await memberService.getMemberByTelegramId(Number(telegramId));
         if (!branch || !target || isBossOrAdmin(target)) {
-            await ctx.answerCallbackQuery({ text: "Xodim yoki filial topilmadi.", show_alert: true });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'mgr.notFound'), show_alert: true });
             return;
         }
         const updated = await memberService.updateMember(target.telegramId, { type: MemberType.MANAGER, branchId: branch._id });
         await ctx.answerCallbackQuery();
-        await ctx.editMessageText(`✅ ${updated.name} ${branch.name} filiali boshqaruvchisi etib tayinlandi.`);
+        await ctx.editMessageText(t(ctx.lang, 'mgr.assigned', { name: updated.name, branch: branch.name }));
     });
 }

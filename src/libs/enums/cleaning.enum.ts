@@ -5,13 +5,6 @@ export enum CleaningPlace {
     OFFICE = 'OFFICE',
 }
 
-export const CLEANING_PLACE_LABELS: Record<CleaningPlace, string> = {
-    SALON: '🛋 Zal',
-    KITCHEN: '🍳 Oshxona',
-    PREP: '🥬 Tayyorlov hududi',
-    OFFICE: '🗄 Ofis',
-};
-
 // plain text for slides/captions (no emoji)
 export const CLEANING_PLACE_NAMES: Record<CleaningPlace, string> = {
     SALON: 'Zal',

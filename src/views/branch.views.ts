@@ -1,49 +1,50 @@
 import { Keyboard, InlineKeyboard } from "grammy";
 import { Branch } from "../libs/types/branch";
 import { Member } from "../libs/types/member";
+import { Lang, t } from "../libs/i18n";
 
-export function askBranchNameView() {
+export function askBranchNameView(lang: Lang) {
     return {
-        text: "Yangi filial nomini kiriting ✍️",
+        text: t(lang, 'branch.askName'),
         keyboard: new Keyboard()
-            .text("🔙 Bosh menyu")
+            .text(t(lang, 'menu.home'))
             .resized()
             .oneTime(),
     };
 }
 
-export function branchRegisteredView(branch: Branch) {
+export function branchRegisteredView(lang: Lang, branch: Branch) {
     return {
-        text: `Filial muvaffaqiyatli qo'shildi! 🏢\nNomi: ${branch.name}\nKoordinatalar: ${branch.lat}, ${branch.lng}`,
+        text: t(lang, 'branch.registered', { name: branch.name, lat: branch.lat, lng: branch.lng }),
     };
 }
 
-export function branchPickerView(branches: Branch[], year: number, month: number, callbackPrefix: string) {
+export function branchPickerView(lang: Lang, branches: Branch[], year: number, month: number, callbackPrefix: string) {
     const keyboard = new InlineKeyboard();
     for (const branch of branches) {
         keyboard.text(branch.name, `${callbackPrefix}:${branch._id.toString()},${year},${month}`).row();
     }
     return {
-        text: `Qaysi filial uchun ${month}/${year} hisobot kerak?`,
+        text: t(lang, 'report.pickBranch', { month, year }),
         keyboard,
     };
 }
 
 
 // Boss/Admin: step 1 of appointing a branch manager
-export function managerBranchPickerView(branches: Branch[]) {
+export function managerBranchPickerView(lang: Lang, branches: Branch[]) {
     const keyboard = new InlineKeyboard();
     for (const branch of branches) {
         keyboard.text(branch.name, `mgr_branch:${branch._id.toString()}`).row();
     }
-    return { text: "Qaysi filial uchun boshqaruvchi tayinlamoqchisiz?", keyboard };
+    return { text: t(lang, 'mgr.pickBranch'), keyboard };
 }
 
 // step 2: pick the employee (boss/admin accounts are never candidates)
-export function managerCandidatePickerView(branch: Branch, candidates: Member[]) {
+export function managerCandidatePickerView(lang: Lang, branch: Branch, candidates: Member[]) {
     const keyboard = new InlineKeyboard();
     for (const user of candidates) {
         keyboard.text(user.name, `mgr_user:${branch._id.toString()},${user.telegramId}`).row();
     }
-    return { text: `${branch.name} filiali uchun boshqaruvchini tanlang:`, keyboard };
+    return { text: t(lang, 'mgr.pickUser', { branch: branch.name }), keyboard };
 }

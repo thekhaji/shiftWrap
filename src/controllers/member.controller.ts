@@ -2,7 +2,8 @@ import { Bot } from "grammy";
 import { MyContext } from "../server";
 import MemberService from "../models/Member.service";
 import BranchService from "../models/Branch.service";
-import { askPhoneView, mainMenuView, errorView, userEditView, userPickerView, askEditFieldDetailView } from "../views/index";
+import { askPhoneView, mainMenuView, errorView, userEditView, userPickerView, askEditFieldDetailView, languagePickerView } from "../views/index";
+import { allLabels, errorText, t } from "../libs/i18n";
 import Errors, { Message } from "../libs/Errors";
 import { Member, MemberInput, MemberManagerUpdate, EditableMemberField, EDITABLE_MEMBER_FIELDS } from "../libs/types/member";
 import { hasManagerPermission, isBossOrAdmin } from "../libs/utils/permission";
@@ -27,8 +28,12 @@ export function memberController(bot: Bot<MyContext>) {
         if (member) {
             const view = mainMenuView(member);
             await ctx.reply(view.text, { reply_markup: view.keyboard });
+        } else if (ctx.session.lang) {
+            const view = askPhoneView(ctx.session.lang);
+            await ctx.reply(view.text, { reply_markup: view.keyboard });
         } else {
-            const view = askPhoneView();
+            // new user: language first, then the phone number
+            const view = languagePickerView('reg_lang');
             await ctx.reply(view.text, { reply_markup: view.keyboard });
         }
     });
@@ -38,7 +43,7 @@ export function memberController(bot: Bot<MyContext>) {
 
         // Reject contact cards forwarded from someone else — only self-shared numbers are valid.
         if (ctx.message.contact.user_id !== ctx.from.id) {
-            await ctx.reply("Iltimos, o'zingizning raqamingizni yuboring 🙂");
+            await ctx.reply(t(ctx.lang, 'reg.ownNumber'));
             return;
         }
 
@@ -55,6 +60,7 @@ export function memberController(bot: Bot<MyContext>) {
             name: [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(" "),
             username: ctx.from.username,
             phone: ctx.message.contact.phone_number,
+            language: ctx.session.lang ?? ctx.lang,
         };
 
         // createMember throws rather than returning a failure value, so this needs try/catch.
@@ -73,21 +79,21 @@ export function memberController(bot: Bot<MyContext>) {
                 return;
             }
             console.error("registration failed:", err);
-            await ctx.reply(errorView().text);
+            await ctx.reply(errorView(ctx.lang).text);
         }
     });
 
-    bot.hears("👥 Xodimlar ma'lumotlarini sozlash", async (ctx) => {
+    bot.hears(allLabels('menu.employees'), async (ctx) => {
         if (!ctx.from) return;
 
         const actor = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!actor || !canManageEmployees(actor)) {
-            await ctx.reply("Sizda bu buyruq uchun ruxsat yo'q.");
+            await ctx.reply(t(ctx.lang, 'common.noPermission'));
             return;
         }
 
         const users = await memberService.getAllMembers();
-        const view = userPickerView(users);
+        const view = userPickerView(ctx.lang, users);
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
 
@@ -97,7 +103,7 @@ export function memberController(bot: Bot<MyContext>) {
 
         const actor = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!actor || !canManageEmployees(actor)) {
-            await ctx.reply("Sizda bu buyruq uchun ruxsat yo'q.");
+            await ctx.reply(t(ctx.lang, 'common.noPermission'));
             return;
         }
 
@@ -106,7 +112,7 @@ export function memberController(bot: Bot<MyContext>) {
         if (!member) return;
 
         const branch = member.branchId ? await branchService.getBranchById(member.branchId) : undefined;
-        const view = await userEditView(member, branch?.name || null);
+        const view = await userEditView(ctx.lang, member, branch?.name || null);
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
 
@@ -116,7 +122,7 @@ export function memberController(bot: Bot<MyContext>) {
 
         const actor = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!actor || !canManageEmployees(actor)) {
-            await ctx.reply("Sizda bu buyruq uchun ruxsat yo'q.");
+            await ctx.reply(t(ctx.lang, 'common.noPermission'));
             return;
         }
 
@@ -133,7 +139,7 @@ export function memberController(bot: Bot<MyContext>) {
         ctx.session.editingMemberTelegramId = member.telegramId;
         ctx.session.editingField = field;
 
-        const view = askEditFieldDetailView(member.name, field);
+        const view = askEditFieldDetailView(ctx.lang, member.name, field);
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
 
@@ -151,13 +157,13 @@ export function memberController(bot: Bot<MyContext>) {
         ctx.session.editingField = undefined;
 
         if (expired || !targetTelegramId || !field) {
-            await ctx.reply("Vaqt tugadi. Qaytadan urinib ko'ring.");
+            await ctx.reply(t(ctx.lang, 'common.timeout'));
             return;
         }
 
         const rawValue = ctx.message.text.trim();
         if (!rawValue) {
-            await ctx.reply("Qiymat bo'sh bo'lishi mumkin emas. Qaytadan urinib ko'ring.");
+            await ctx.reply(t(ctx.lang, 'emp.valueEmpty'));
             return;
         }
 
@@ -165,7 +171,7 @@ export function memberController(bot: Bot<MyContext>) {
         if (field === "hourlyRate") {
             const parsed = Number(rawValue);
             if (Number.isNaN(parsed)) {
-                await ctx.reply("Iltimos, faqat raqam kiriting.");
+                await ctx.reply(t(ctx.lang, 'emp.numberOnly'));
                 return;
             }
             updateData.hourlyRate = parsed;
@@ -175,16 +181,16 @@ export function memberController(bot: Bot<MyContext>) {
 
         try {
             const updated = await memberService.updateMember(targetTelegramId, updateData);
-            await ctx.reply("Ma'lumot muvaffaqiyatli yangilandi ✅");
+            await ctx.reply(t(ctx.lang, 'emp.updated'));
             const branch = updated.branchId ? await branchService.getBranchById(updated.branchId) : undefined;
-            const view = await userEditView(updated, branch?.name || null);
+            const view = await userEditView(ctx.lang, updated, branch?.name || null);
             await ctx.reply(view.text, { reply_markup: view.keyboard });
         } catch (err) {
             if (err instanceof Errors) {
-                await ctx.reply(err.message);
+                await ctx.reply(errorText(ctx.lang, err.message));
             } else {
                 console.error("member update failed:", err);
-                await ctx.reply("Xatolik yuz berdi.");
+                await ctx.reply(t(ctx.lang, 'common.errorShort'));
             }
         }
     });

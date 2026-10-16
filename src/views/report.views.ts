@@ -1,16 +1,13 @@
 import { InlineKeyboard } from "grammy";
+import { Lang, monthNames, t } from "../libs/i18n";
 
-export function monthPickerView(months: { year: number; month: number }[]) {
+export function monthPickerView(lang: Lang, months: { year: number; month: number }[]) {
     const keyboard = new InlineKeyboard();
-    const monthNames = ["Yanvar", "Fevral", "Mart", "Aprel", "May", "Iyun", "Iyul", "Avgust", "Sentyabr", "Oktyabr", "Noyabr", "Dekabr"];
+    const names = monthNames(lang);
 
     for (const { year, month } of months) {
-        const label = `${monthNames[month - 1]} ${year}`;
-        keyboard.text(label, `history_month:${year}-${month}`).row();
+        keyboard.text(`${names[month - 1]} ${year}`, `history_month:${year}-${month}`).row();
     }
 
-    return {
-        text: "Qaysi oy hisobotini ko'rmoqchisiz?",
-        keyboard,
-    };
+    return { text: t(lang, 'report.pickMonth'), keyboard };
 }

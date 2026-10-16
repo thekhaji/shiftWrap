@@ -13,6 +13,9 @@ import { orderController } from './controllers/order.controller';
 import { productController } from './controllers/product.controller';
 import { ProductCategory } from './libs/enums/product.enum';
 import { CleaningPlace } from './libs/enums/cleaning.enum';
+import { Lang, DEFAULT_LANG } from './libs/i18n';
+import MemberService from './models/Member.service';
+import { languageController } from './controllers/language.controller';
 import { startMenuSync } from './libs/utils/menuSync';
 import { cleaningController } from './controllers/cleaning.controller';
 
@@ -37,17 +40,26 @@ export interface SessionData {
         photos?: { messageId: number; fileId: string }[];   // album photos so far (needs 2: before, after)
     };
     lastCleaningAlbumId?: string;  // saved album; its leftover photos are ignored
+    lang?: Lang;                   // chosen before registration finishes
     basketMessageIds?: number[];   // message ids of the catalog, so they can be deleted later
 }
 
-export type MyContext = Context & SessionFlavor<SessionData>;
+export type MyContext = Context & SessionFlavor<SessionData> & { lang: Lang };
 
 mongoose.connect(process.env.MONGO_URL as string)
 .then((data)=>{
     console.log("MongoDB connected successfully");
     const bot = new Bot<MyContext>(process.env.BOT_TOKEN as string);
     bot.use(session({ initial: (): SessionData => ({}) }));
-    navigationController(bot); // first: its middleware resets pending prompts on menu taps
+    const memberService = new MemberService();
+    // every handler reads ctx.lang: the member's saved language, or the one picked while registering
+    bot.use(async (ctx, next) => {
+        const member = ctx.from ? await memberService.getMemberByTelegramId(ctx.from.id) : null;
+        ctx.lang = member?.language ?? ctx.session.lang ?? DEFAULT_LANG;
+        await next();
+    });
+    navigationController(bot);
+    languageController(bot); // first: its middleware resets pending prompts on menu taps
     memberController(bot);
     attendanceController(bot);
     branchController(bot);

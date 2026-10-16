@@ -2,44 +2,45 @@ import { Keyboard, InlineKeyboard } from 'grammy';
 import { Product } from '../libs/types/product';
 import { Order } from '../libs/types/order';
 import { OrderStatus } from '../libs/enums/order.enum';
-import { CATEGORY_LABELS,  ProductCategory} from '../libs/enums/product.enum';
+import { ProductCategory } from '../libs/enums/product.enum';
+import { Lang, t } from '../libs/i18n';
 
-export function storageMenuView() {
+export function storageMenuView(lang: Lang) {
     const keyboard = new InlineKeyboard()
-        .text("🛒 Buyurtma berish", "order_start").row()
-        .text("➕ Mahsulot qo'shish", "product_add");
-    return { text: "📦 Ombor", keyboard };
+        .text(t(lang, 'storage.order'), "order_start").row()
+        .text(t(lang, 'storage.addProduct'), "product_add");
+    return { text: t(lang, 'storage.title'), keyboard };
 }
 
 // one card per product: photo + name + note, with its own select button
-export function productCardView(product: Product, selected: boolean) {
+export function productCardView(lang: Lang, product: Product, selected: boolean) {
     const lines = [product.name];
     if (product.orderNote) lines.push(product.orderNote);
     const keyboard = new InlineKeyboard().text(
-        selected ? '✅ Tanlandi (bekor qilish)' : '☐ Tanlash',
+        t(lang, selected ? 'order.selected' : 'order.select'),
         `order_toggle:${product._id.toString()}`
     );
     return { text: lines.join('\n'), keyboard };
 }
 
 // step 1 of ordering: pick a category
-export function orderCategoryView(counts: Map<ProductCategory, number>, uncategorized = 0) {
+export function orderCategoryView(lang: Lang, counts: Map<ProductCategory, number>, uncategorized = 0) {
     const keyboard = new InlineKeyboard();
     for (const cat of Object.values(ProductCategory)) {
-        keyboard.text(`${CATEGORY_LABELS[cat]} (${counts.get(cat) ?? 0})`, `order_cat:${cat}`).row();
+        keyboard.text(`${t(lang, `cat.${cat}`)} (${counts.get(cat) ?? 0})`, `order_cat:${cat}`).row();
     }
     // products saved before categories existed
-    if (uncategorized) keyboard.text(`❓ Guruhsiz (${uncategorized})`, 'order_cat:NONE').row();
-    keyboard.text('📤 Yuborish', 'order_send').text('✖ Bekor qilish', 'order_cancel');
-    return { text: 'Mahsulotingiz tegishli bo\'lgan guruhni tanlang:', keyboard };
+    if (uncategorized) keyboard.text(`${t(lang, 'order.uncategorized')} (${uncategorized})`, 'order_cat:NONE').row();
+    keyboard.text(t(lang, 'order.send'), 'order_send').text(t(lang, 'common.cancel'), 'order_cancel');
+    return { text: t(lang, 'order.pickCategory'), keyboard };
 }
 
-export function orderControlView() {
+export function orderControlView(lang: Lang) {
     const keyboard = new InlineKeyboard()
-        .text('⬅️ Guruhlar', 'order_categories').row()
-        .text('📤 Yuborish', 'order_send')
-        .text('✖ Bekor qilish', 'order_cancel');
-    return { text: 'Kerakli mahsulotlarni belgilab, "Yuborish" ni bosing:', keyboard };
+        .text(t(lang, 'order.groups'), 'order_categories').row()
+        .text(t(lang, 'order.send'), 'order_send')
+        .text(t(lang, 'common.cancel'), 'order_cancel');
+    return { text: t(lang, 'order.controlText'), keyboard };
 }
 
 // the message posted into the group topics
@@ -75,25 +76,18 @@ export function orderMessageView(order: Order, products: Product[], requesterNam
     };
 }
 
-export function productStepView(step: 'name' | 'category' | 'photo' | 'link' | 'note') {
-    const texts = {
-        name: "Mahsulot nomini yozing:",
-        category: "Mahsulot guruhini tanlang:",
-        photo: "Mahsulot rasmini yuboring (ixtiyoriy):",
-        link: "Buyurtma havolasini yuboring, masalan Coupang linki (ixtiyoriy):",
-        note: "Qanday buyurtma qilinishini yozing, masalan «ishlab chiqaruvchidan, tel: ...» (ixtiyoriy):",
-    };
+export function productStepView(lang: Lang, step: 'name' | 'category' | 'photo' | 'link' | 'note') {
     const keyboard = new InlineKeyboard();
-    if (step !== 'name') keyboard.text("⏭ O'tkazib yuborish", "product_skip");
-    keyboard.text("✖ Bekor qilish", "product_cancel");
-    return { text: texts[step], keyboard };
+    if (step !== 'name') keyboard.text(t(lang, 'product.skip'), "product_skip");
+    keyboard.text(t(lang, 'common.cancel'), "product_cancel");
+    return { text: t(lang, `product.step.${step}`), keyboard };
 }
 
-export function productCategoryView() {
+export function productCategoryView(lang: Lang) {
     const keyboard = new InlineKeyboard();
     for (const cat of Object.values(ProductCategory)) {
-        keyboard.text(CATEGORY_LABELS[cat], `product_cat:${cat}`).row();
+        keyboard.text(t(lang, `cat.${cat}`), `product_cat:${cat}`).row();
     }
-    keyboard.text("✖ Bekor qilish", "product_cancel");
-    return { text: "Mahsulot qaysi guruhga tegishli?", keyboard };
+    keyboard.text(t(lang, 'common.cancel'), "product_cancel");
+    return { text: t(lang, 'product.categoryQ'), keyboard };
 }

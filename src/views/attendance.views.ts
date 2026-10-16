@@ -1,31 +1,28 @@
 import { Keyboard } from "grammy";
+import { Lang, t } from "../libs/i18n";
 
-export function askLocationView() {
+export function askLocationView(lang: Lang) {
     return {
-        text: "Joylashuvingizni yuboring 📍",
+        text: t(lang, 'att.askLocation'),
         keyboard: new Keyboard()
-            .requestLocation("📍 Joylashuvni yuborish")
+            .requestLocation(t(lang, 'att.sendLocation'))
             .row()
-            .text("🔙 Bosh menyu")
+            .text(t(lang, 'menu.home'))
             .resized()
             .oneTime(),
     };
 }
 
-export function checkInSuccessView(checkInTime: Date) {
+export function checkInSuccessView(lang: Lang, checkInTime: Date) {
+    return { text: t(lang, 'att.checkInOk', { time: checkInTime.toLocaleString() }) };
+}
+
+export function checkOutSuccessView(lang: Lang, checkInTime: Date, checkOutTime: Date) {
     return {
-        text: `Siz muvaffaqiyatli check in qildingiz! ⏰\nCheck In vaqti: ${checkInTime.toLocaleString()}`,
+        text: t(lang, 'att.checkOutOk', { inTime: checkInTime.toLocaleString(), outTime: checkOutTime.toLocaleString() }),
     };
 }
 
-export function checkOutSuccessView(checkInTime: Date, checkOutTime: Date) {
-    return {
-        text: `Siz muvaffaqiyatli check out qildingiz! ⏰\nCheck In vaqti: ${checkInTime.toLocaleString()}\nCheck Out vaqti: ${checkOutTime.toLocaleString()}`,
-    };
-}
-
-export function noOpenShiftView() {
-    return {
-        text: "Sizda ochiq shift mavjud emas! ❌\nIltimos, avval check in qiling.",
-    };
+export function noOpenShiftView(lang: Lang) {
+    return { text: t(lang, 'att.noOpenShift') };
 }

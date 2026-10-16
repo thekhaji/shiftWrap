@@ -1,5 +1,6 @@
 import {MemberStatus, MemberType} from '../enums/member.enum';
 import {Types} from 'mongoose';
+import {Lang} from '../i18n';
 
 export interface Member {
     _id: Types.ObjectId;
@@ -7,6 +8,7 @@ export interface Member {
     name: string;
     username?: string;
     phone: string;
+    language?: Lang;            // chosen at registration, changeable from the menu
     type: MemberType;
     status: MemberStatus;
     branchId?: Types.ObjectId; //set by Boss/Admin
@@ -22,6 +24,7 @@ export interface MemberInput {
     name: string;
     username?: string;
     phone: string;
+    language?: Lang;
     type?: MemberType;
     status?: MemberStatus;
 }

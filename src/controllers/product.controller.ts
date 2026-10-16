@@ -7,15 +7,14 @@ import ProductService from '../models/Product.service';
 import { ProductCategory } from '../libs/enums/product.enum';
 import { hasManagerPermission, isBossOrAdmin } from '../libs/utils/permission';
 import { productStepView, productCategoryView } from '../views/index';
+import { allLabels, allMenuLabels, t } from '../libs/i18n';
 
 const memberService = new MemberService();
 const branchService = new BranchService();
 const productService = new ProductService();
 
 // tapping a main-menu button cancels an unfinished add-product flow
-const MENU_LABELS = new Set([
-    "✅ Check In", "🚪 Check Out", "📊 Hisobot", "🏢 Filial hisoboti", "📦 Ombor",
-]);
+const MENU_LABELS = allMenuLabels();
 
 type Step = 'name' | 'category' | 'photo' | 'link' | 'note';
 
@@ -24,11 +23,11 @@ export function productController(bot: Bot<MyContext>) {
     async function askStep(ctx: MyContext, step: Step) {
         ctx.session.addProduct!.step = step;
         if (step === 'category') {
-            const view = productCategoryView();
+            const view = productCategoryView(ctx.lang);
             await ctx.reply(view.text, { reply_markup: view.keyboard });
             return;
         }
-        const view = productStepView(step);
+        const view = productStepView(ctx.lang, step);
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     }
 
@@ -36,11 +35,11 @@ export function productController(bot: Bot<MyContext>) {
         const w = ctx.session.addProduct!;
         if (!w.name || !w.category) {
             ctx.session.addProduct = undefined;
-            await ctx.reply("Xatolik yuz berdi. Qaytadan boshlang.");
+            await ctx.reply(t(ctx.lang, 'product.failedStart'));
             return;
         }
         if (!w.orderLink && !w.orderNote) {
-            await ctx.reply("Havola yoki izohdan kamida bittasi kerak.");
+            await ctx.reply(t(ctx.lang, 'product.needOne'));
             await askStep(ctx, 'link');
             return;
         }
@@ -53,10 +52,10 @@ export function productController(bot: Bot<MyContext>) {
                 orderLink: w.orderLink,
                 orderNote: w.orderNote,
             });
-            await ctx.reply(`✅ "${w.name}" qo'shildi.`);
+            await ctx.reply(t(ctx.lang, 'product.added', { name: w.name }));
         } catch (err) {
             console.error("add product failed:", err);
-            await ctx.reply("Mahsulotni saqlab bo'lmadi. Nom takrorlangan bo'lishi mumkin yoki havola noto'g'ri.");
+            await ctx.reply(t(ctx.lang, 'product.saveFailed'));
         }
         ctx.session.addProduct = undefined;
     }
@@ -65,7 +64,7 @@ export function productController(bot: Bot<MyContext>) {
     bot.callbackQuery("product_add", async (ctx) => {
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!member || !hasManagerPermission(member)) {
-            await ctx.answerCallbackQuery({ text: "Ruxsat yo'q." });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
             return;
         }
         await ctx.answerCallbackQuery();
@@ -73,7 +72,7 @@ export function productController(bot: Bot<MyContext>) {
             const branches = await branchService.getAllBranches();
             const keyboard = new InlineKeyboard();
             for (const b of branches) keyboard.text(b.name, `product_branch:${b._id.toString()}`).row();
-            await ctx.reply("Qaysi filial uchun?", { reply_markup: keyboard });
+            await ctx.reply(t(ctx.lang, 'product.pickBranch'), { reply_markup: keyboard });
             return;
         }
         ctx.session.addProduct = { step: 'name', branchId: member.branchId!.toString() };
@@ -83,7 +82,7 @@ export function productController(bot: Bot<MyContext>) {
     bot.callbackQuery(/^product_branch:/, async (ctx) => {
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!member || !isBossOrAdmin(member)) {
-            await ctx.answerCallbackQuery({ text: "Ruxsat yo'q." });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
             return;
         }
         await ctx.answerCallbackQuery();
@@ -117,12 +116,12 @@ export function productController(bot: Bot<MyContext>) {
             w.name = text;
             await askStep(ctx, 'category');
         } else if (w.step === 'category') {
-            await ctx.reply("Guruhni tugmalardan tanlang.");
+            await ctx.reply(t(ctx.lang, 'product.useButtons'));
         } else if (w.step === 'photo') {
-            await ctx.reply("Rasm yuboring yoki o'tkazib yuboring.");
+            await ctx.reply(t(ctx.lang, 'product.sendPhoto'));
         } else if (w.step === 'link') {
             if (!/^https?:\/\//i.test(text)) {
-                await ctx.reply("Havola http:// yoki https:// bilan boshlanishi kerak.");
+                await ctx.reply(t(ctx.lang, 'product.linkFormat'));
                 return;
             }
             w.orderLink = text;
@@ -152,6 +151,6 @@ export function productController(bot: Bot<MyContext>) {
     bot.callbackQuery("product_cancel", async (ctx) => {
         ctx.session.addProduct = undefined;
         await ctx.answerCallbackQuery();
-        await ctx.editMessageText("Bekor qilindi.");
+        await ctx.editMessageText(t(ctx.lang, 'common.cancelled'));
     });
 }

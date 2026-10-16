@@ -1,62 +1,63 @@
 import { Keyboard, InlineKeyboard } from "grammy";
 import { Member } from "../libs/types/member";
+import { Lang, t } from "../libs/i18n";
 
 
-export function askPhoneView() {
+export function askPhoneView(lang: Lang) {
     return {
-        text: "Assalomu alaykum! Ro'yxatdan o'tish uchun telefon raqamingizni yuboring 👇",
+        text: t(lang, 'reg.askPhone'),
         keyboard: new Keyboard()
-            .requestContact("📱 Raqamni yuborish")
+            .requestContact(t(lang, 'reg.sendPhone'))
             .resized()
             .oneTime(),
     };
 }
 
-export function userPickerView(users: Member[]) {
+export function userPickerView(lang: Lang, users: Member[]) {
     const keyboard = new InlineKeyboard();
     const sortedUsers = users.sort((a, b) => a.name.localeCompare(b.name));
     for (const user of sortedUsers) {
         keyboard.text(user.name, `user_picker:${user.telegramId.toString()}`).row();
     }
     return {
-        text: "Qaysi foydalanuvchi ma'lumotlarini o'zgartirmoqchisiz?",
+        text: t(lang, 'emp.pick'),
         keyboard,
     };
 }
 
-export function userEditView(user: Member, branchName: string | null) {
+export function userEditView(lang: Lang, user: Member, branchName: string | null) {
     const keyboard = new InlineKeyboard()
-        .text("Telefon raqamini o'zgartirish", `edit_user:${user.telegramId},phone`).row()
-        .text("Bank nomini o'zgartirish", `edit_user:${user.telegramId},bankName`).row()
-        .text("Bank hisob raqamini o'zgartirish", `edit_user:${user.telegramId},bankAccount`).row()
-        .text("Soatlik narxni o'zgartirish", `edit_user:${user.telegramId},hourlyRate`).row();
+        .text(t(lang, 'emp.btnPhone'), `edit_user:${user.telegramId},phone`).row()
+        .text(t(lang, 'emp.btnBankName'), `edit_user:${user.telegramId},bankName`).row()
+        .text(t(lang, 'emp.btnBankAccount'), `edit_user:${user.telegramId},bankAccount`).row()
+        .text(t(lang, 'emp.btnRate'), `edit_user:${user.telegramId},hourlyRate`).row();
 
+    const unknown = t(lang, 'common.unknown');
     return {
-        text: `Foydalanuvchi: ${user.name}\nTelefon: ${user.phone}\nFilial: ${branchName || "Noma'lum"}\nBank: ${user.bankName || "Noma'lum"}\nBank hisob raqami: ${user.bankAccount || "Noma'lum"}\nSoatlik narx: ${user.hourlyRate !== undefined ? user.hourlyRate : "Noma'lum"} won\n\nQaysi ma'lumotni o'zgartirmoqchisiz?`,
+        text: t(lang, 'emp.card', {
+            name: user.name,
+            phone: user.phone,
+            branch: branchName || unknown,
+            bank: user.bankName || unknown,
+            account: user.bankAccount || unknown,
+            rate: user.hourlyRate !== undefined ? t(lang, 'emp.rate', { n: user.hourlyRate }) : unknown,
+        }),
         keyboard,
     };
 }
 
-export function askEditFieldDetailView(userName: string, field: string) {
-    let prompt = "";
-    switch (field) {
-        case "phone":
-            prompt = `${userName}ning yangi telefon raqamini kiriting ✍️`;
-            break;
-        case "bankName":
-            prompt = `${userName}ning yangi bank nomini kiriting ✍️`;
-            break;
-        case "bankAccount":
-            prompt = `${userName}ning yangi bank hisob raqamini kiriting ✍️`;
-            break;
-        case "hourlyRate":
-            prompt = `${userName}ning yangi soatlik narxni kiriting ✍️`;
-            break;
-    }
+export function askEditFieldDetailView(lang: Lang, userName: string, field: string) {
+    const keys = {
+        phone: 'emp.ask.phone',
+        bankName: 'emp.ask.bankName',
+        bankAccount: 'emp.ask.bankAccount',
+        hourlyRate: 'emp.ask.hourlyRate',
+    } as const;
+    const key = keys[field as keyof typeof keys];
     return {
-        text: prompt,
+        text: key ? t(lang, key, { name: userName }) : "",
         keyboard: new Keyboard()
-            .text("🔙 Bosh menyu")
+            .text(t(lang, 'menu.home'))
             .resized()
             .oneTime(),
     };

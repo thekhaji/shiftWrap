@@ -20,6 +20,11 @@ const memberSchema = new Schema({
         type: String, 
         required: true 
     },
+    language: {
+        type: String,
+        enum: ['uz', 'tr', 'en'],
+        default: 'uz'
+    },
     type: { 
         type: String, 
         enum: MemberType, 

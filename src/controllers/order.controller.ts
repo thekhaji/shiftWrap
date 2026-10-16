@@ -5,7 +5,8 @@ import MemberService from '../models/Member.service';
 import BranchService from '../models/Branch.service';
 import ProductService from '../models/Product.service';
 import OrderService from '../models/Order.service';
-import { ProductCategory, CATEGORY_LABELS } from '../libs/enums/product.enum';
+import { ProductCategory } from '../libs/enums/product.enum';
+import { allLabels, t } from '../libs/i18n';
 import { Order } from '../libs/types/order';
 import { hasManagerPermission, isBossOrAdmin, isManagerOf } from '../libs/utils/permission';
 import { productCardView, orderCategoryView, orderControlView, orderMessageView, storageMenuView } from '../views/index';
@@ -28,14 +29,14 @@ export function orderController(bot: Bot<MyContext>) {
     }
 
     // 1. Open the storage menu
-    bot.hears("📦 Ombor", async (ctx) => {
+    bot.hears(allLabels('menu.storage'), async (ctx) => {
         if (!ctx.from) return;
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!member || !hasManagerPermission(member)) {
-            await ctx.reply("Sizda bu buyruq uchun ruxsat yo'q.");
+            await ctx.reply(t(ctx.lang, 'common.noPermission'));
             return;
         }
-        const view = storageMenuView();
+        const view = storageMenuView(ctx.lang);
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
 
@@ -43,7 +44,7 @@ export function orderController(bot: Bot<MyContext>) {
     async function showCategories(ctx: MyContext, branchId: Types.ObjectId) {
         const products = await productService.getActiveProductsByBranch(branchId);
         if (products.length === 0) {
-            await ctx.reply("Bu filialda hali mahsulotlar yo'q.");
+            await ctx.reply(t(ctx.lang, 'order.noProducts'));
             return;
         }
         const counts = new Map<ProductCategory, number>();
@@ -54,7 +55,7 @@ export function orderController(bot: Bot<MyContext>) {
         }
 
         await clearBasket(ctx); // reopening removes the old cards
-        const view = orderCategoryView(counts, uncategorized);
+        const view = orderCategoryView(ctx.lang, counts, uncategorized);
         const msg = await ctx.reply(view.text, { reply_markup: view.keyboard });
         ctx.session.basketMessageIds = [msg.message_id];
     }
@@ -63,12 +64,12 @@ export function orderController(bot: Bot<MyContext>) {
         await ctx.answerCallbackQuery();
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!member || !hasManagerPermission(member)) {
-            await ctx.reply("Sizda bu buyruq uchun ruxsat yo'q.");
+            await ctx.reply(t(ctx.lang, 'common.noPermission'));
             return;
         }
         if (!member.branchId) {
             // boss/admin have no branch of their own
-            await ctx.reply("Boss/admin uchun buyurtma berish keyingi bosqichda qo'shiladi.");
+            await ctx.reply(t(ctx.lang, 'order.bossLater'));
             return;
         }
         await showCategories(ctx, member.branchId);
@@ -79,7 +80,7 @@ export function orderController(bot: Bot<MyContext>) {
         await ctx.answerCallbackQuery();
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!member || !hasManagerPermission(member) || !member.branchId) {
-            await ctx.reply("Sizda bu buyruq uchun ruxsat yo'q.");
+            await ctx.reply(t(ctx.lang, 'common.noPermission'));
             return;
         }
         const key = ctx.callbackQuery.data.split(':')[1];
@@ -100,7 +101,7 @@ export function orderController(bot: Bot<MyContext>) {
 
         const sentIds: number[] = [];
         for (const p of products) {
-            const view = productCardView(p, selected.has(p._id.toString()));
+            const view = productCardView(ctx.lang, p, selected.has(p._id.toString()));
             let msg;
             if (p.imageFileId) {
                 try {
@@ -118,8 +119,8 @@ export function orderController(bot: Bot<MyContext>) {
             sentIds.push(msg.message_id);
         }
 
-        const control = orderControlView();
-        const controlMsg = await ctx.reply(`${isNone ? '❓ Guruhsiz' : CATEGORY_LABELS[cat]}\n${control.text}`, { reply_markup: control.keyboard });
+        const control = orderControlView(ctx.lang);
+        const controlMsg = await ctx.reply(`${isNone ? t(ctx.lang, 'order.uncategorized') : t(ctx.lang, `cat.${cat}`)}\n${control.text}`, { reply_markup: control.keyboard });
         sentIds.push(controlMsg.message_id);
         ctx.session.basketMessageIds = sentIds;
     });
@@ -128,20 +129,20 @@ export function orderController(bot: Bot<MyContext>) {
     bot.callbackQuery(/^order_toggle:/, async (ctx) => {
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!member || !hasManagerPermission(member) || !member.branchId) {
-            await ctx.answerCallbackQuery({ text: "Ruxsat yo'q." });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
             return;
         }
         const productId = ctx.callbackQuery.data.split(':')[1];
         const products = await productService.getActiveProductsByBranch(member.branchId);
         const product = products.find(p => p._id.toString() === productId); // must belong to THIS branch
         if (!product) {
-            await ctx.answerCallbackQuery({ text: "Mahsulot topilmadi." });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'order.productNotFound') });
             return;
         }
         const draft = await orderService.getOrCreateDraft(member._id, member.branchId);
         const updated = await orderService.toggleItem(draft._id, product);
         const isSelected = updated.items.some(i => i.productId.toString() === productId);
-        const view = productCardView(product, isSelected);
+        const view = productCardView(ctx.lang, product, isSelected);
         await ctx.editMessageReplyMarkup({ reply_markup: view.keyboard });
         await ctx.answerCallbackQuery();
     });
@@ -150,18 +151,18 @@ export function orderController(bot: Bot<MyContext>) {
     bot.callbackQuery('order_send', async (ctx) => {
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!member || !hasManagerPermission(member) || !member.branchId) {
-            await ctx.answerCallbackQuery({ text: "Ruxsat yo'q." });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
             return;
         }
         const branch = await branchService.getBranchById(member.branchId);
         if (!branch?.orderGroupId || !branch.threadIds?.order) {
-            await ctx.answerCallbackQuery({ text: "Filialga guruh ulanmagan.", show_alert: true });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'order.noGroup'), show_alert: true });
             return;
         }
         const draft = await orderService.getOrCreateDraft(member._id, member.branchId);
         const order = await orderService.submitDraft(draft._id);
         if (!order) {
-            await ctx.answerCallbackQuery({ text: "Kamida bitta mahsulotni belgilang.", show_alert: true });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'order.selectOne'), show_alert: true });
             return;
         }
 
@@ -178,7 +179,7 @@ export function orderController(bot: Bot<MyContext>) {
             console.error("send order to group failed:", err);
             await orderService.revertToDraft(order._id); // selection survives, manager can retry
             await ctx.answerCallbackQuery({
-                text: "Guruhga yuborib bo'lmadi. Keyinroq urinib ko'ring.",
+                text: t(ctx.lang, 'order.sendFailed'),
                 show_alert: true,
             });
             return;
@@ -186,7 +187,7 @@ export function orderController(bot: Bot<MyContext>) {
 
         await orderService.setGroupMessageId(order._id, sent.message_id);
         await clearBasket(ctx);
-        await ctx.reply("✅ Buyurtma guruhga yuborildi.");
+        await ctx.reply(t(ctx.lang, 'order.sent'));
         await ctx.answerCallbackQuery();
     });
 
@@ -197,7 +198,7 @@ export function orderController(bot: Bot<MyContext>) {
             await orderService.cancelDraftFor(member._id, member.branchId);
         }
         await clearBasket(ctx);
-        await ctx.reply("Bekor qilindi.");
+        await ctx.reply(t(ctx.lang, 'common.cancelled'));
         await ctx.answerCallbackQuery();
     });
 
@@ -205,7 +206,7 @@ export function orderController(bot: Bot<MyContext>) {
     bot.callbackQuery(/^order_ordered:/, async (ctx) => {
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!member || !isBossOrAdmin(member)) {
-            await ctx.answerCallbackQuery({ text: "Faqat boss yoki admin.", show_alert: true });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'order.onlyBoss'), show_alert: true });
             return;
         }
         const orderId = ctx.callbackQuery.data.split(':')[1];
@@ -215,12 +216,12 @@ export function orderController(bot: Bot<MyContext>) {
         }
         const order = await orderService.markOrdered(new Types.ObjectId(orderId), member._id);
         if (!order) {
-            await ctx.answerCallbackQuery({ text: "Allaqachon o'zgartirilgan." });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'order.alreadyChanged') });
             return;
         }
         const moved = await moveToTopic(ctx, order, 'ordered');
         if (!moved) {
-            await ctx.answerCallbackQuery({ text: "Holat o'zgardi, lekin xabarni ko'chirib bo'lmadi.", show_alert: true });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'order.moveFailed'), show_alert: true });
             return;
         }
         await ctx.answerCallbackQuery();
@@ -231,17 +232,17 @@ export function orderController(bot: Bot<MyContext>) {
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         const current = await orderService.getById(ctx.callbackQuery.data.split(':')[1]);
         if (!member || !current || !isManagerOf(member, current.branchId.toString())) {
-            await ctx.answerCallbackQuery({ text: "Faqat shu filial menejeri.", show_alert: true });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'order.onlyBranchManager'), show_alert: true });
             return;
         }
         const order = await orderService.markArrived(current._id, member._id);
         if (!order) {
-            await ctx.answerCallbackQuery({ text: "Allaqachon o'zgartirilgan." });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'order.alreadyChanged') });
             return;
         }
         const moved = await moveToTopic(ctx, order, 'arrived');
         if (!moved) {
-            await ctx.answerCallbackQuery({ text: "Holat o'zgardi, lekin xabarni ko'chirib bo'lmadi.", show_alert: true });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'order.moveFailed'), show_alert: true });
             return;
         }
         await ctx.answerCallbackQuery();

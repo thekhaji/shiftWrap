@@ -10,13 +10,12 @@ import { hasManagerPermission, isBossOrAdmin } from '../libs/utils/permission';
 import { currentWeekStartSeoul } from '../libs/utils/date';
 import { nowInSeoul } from '../libs/utils/time';
 import { buildCleaningPptx } from '../libs/utils/cleaningPptx';
+import { allLabels, t, Lang, DEFAULT_LANG } from '../libs/i18n';
 import { cleaningPlacesView, cleaningUploadView, cleaningOverviewView, cleaningSubmitView } from '../views/index';
 
 const memberService = new MemberService();
 const branchService = new BranchService();
 const cleaningService = new CleaningService();
-
-const FINISHED_TEXT = "Siz bu haftalik tozalash rasmlarini allaqachon yakunlagansiz. Yangi hafta dushanba kuni boshlanadi.";
 
 function isPlace(value: string): value is CleaningPlace {
     return Object.values(CleaningPlace).includes(value as CleaningPlace);
@@ -38,25 +37,25 @@ export function cleaningController(bot: Bot<MyContext>) {
         return member;
     }
 
-    async function placesView(member: Member, note?: string) {
+    async function placesView(lang: Lang, member: Member, note?: string) {
         const pairs = await cleaningService.getPairs(member.branchId!, currentWeekStartSeoul());
         const mine = new Set(pairs.filter(p => p.memberId.equals(member._id)).map(p => p.place));
-        return cleaningPlacesView(mine, note);
+        return cleaningPlacesView(lang, mine, note);
     }
 
     // 1. Employee opens the place list
-    bot.hears("🧹 Haftalik tozalash", async (ctx) => {
+    bot.hears(allLabels('menu.cleaning'), async (ctx) => {
         const member = await getCleaner(ctx);
         if (!member) {
-            await ctx.reply("Sizga hali filial biriktirilmagan. Iltimos, rahbariyatga murojaat qiling.");
+            await ctx.reply(t(ctx.lang, 'clean.noBranch'));
             return;
         }
         ctx.session.cleaning = undefined;
         if (await cleaningService.isDone(member._id, currentWeekStartSeoul())) {
-            await ctx.reply(FINISHED_TEXT);
+            await ctx.reply(t(ctx.lang, 'clean.finished'));
             return;
         }
-        const view = await placesView(member);
+        const view = await placesView(ctx.lang, member);
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
 
@@ -65,16 +64,16 @@ export function cleaningController(bot: Bot<MyContext>) {
         const member = await getCleaner(ctx);
         const place = ctx.callbackQuery.data.split(':')[1];
         if (!member || !isPlace(place)) {
-            await ctx.answerCallbackQuery({ text: "Ruxsat yo'q." });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
             return;
         }
         if (await cleaningService.isDone(member._id, currentWeekStartSeoul())) {
-            await ctx.answerCallbackQuery({ text: FINISHED_TEXT, show_alert: true });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'clean.finished'), show_alert: true });
             return;
         }
         await ctx.answerCallbackQuery();
         ctx.session.cleaning = { place };
-        const view = cleaningUploadView(place);
+        const view = cleaningUploadView(ctx.lang, place);
         await ctx.editMessageText(view.text, { reply_markup: view.keyboard });
     });
 
@@ -89,13 +88,13 @@ export function cleaningController(bot: Bot<MyContext>) {
         const weekStart = currentWeekStartSeoul();
         if (await cleaningService.isDone(member._id, weekStart)) {
             ctx.session.cleaning = undefined;
-            await ctx.reply(FINISHED_TEXT);
+            await ctx.reply(t(ctx.lang, 'clean.finished'));
             return;
         }
 
         const albumId = ctx.message.media_group_id;
         if (!albumId) {
-            await ctx.reply("Iltimos, tozalashdan oldingi va keyingi rasmlarni bitta albom sifatida yuboring.");
+            await ctx.reply(t(ctx.lang, 'clean.sendAlbum'));
             return;
         }
         if (albumId === ctx.session.lastCleaningAlbumId) return; // extra photo of an album already saved
@@ -119,14 +118,14 @@ export function cleaningController(bot: Bot<MyContext>) {
         });
         ctx.session.lastCleaningAlbumId = albumId;
         ctx.session.cleaning = undefined;
-        const view = await placesView(member, "✅ Rasmlar muvaffaqiyatli saqlandi. Boshqa hududni tanlashingiz yoki shu hudud uchun yana bir juft rasm yuklashingiz mumkin.");
+        const view = await placesView(ctx.lang, member, t(ctx.lang, 'clean.saved'));
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
 
     // text while waiting for a photo
     bot.on("message:text", async (ctx, next) => {
         if (!ctx.session.cleaning) return next();
-        await ctx.reply("Iltimos, 2 ta rasmni bitta albom sifatida yuboring yoki «⬅️ Hududlar ro'yxatiga qaytish» tugmasini bosing.");
+        await ctx.reply(t(ctx.lang, 'clean.sendAlbumOrBack'));
     });
 
     // 4. Back to the place list (drops a half-finished pair)
@@ -135,7 +134,7 @@ export function cleaningController(bot: Bot<MyContext>) {
         await ctx.answerCallbackQuery();
         if (!member) return;
         ctx.session.cleaning = undefined;
-        const view = await placesView(member);
+        const view = await placesView(ctx.lang, member);
         await ctx.editMessageText(view.text, { reply_markup: view.keyboard });
     });
 
@@ -143,40 +142,41 @@ export function cleaningController(bot: Bot<MyContext>) {
     bot.callbackQuery("clean_done", async (ctx) => {
         const member = await getCleaner(ctx);
         if (!member) {
-            await ctx.answerCallbackQuery({ text: "Ruxsat yo'q." });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
             return;
         }
         const weekStart = currentWeekStartSeoul();
         if (await cleaningService.isDone(member._id, weekStart)) {
-            await ctx.answerCallbackQuery({ text: FINISHED_TEXT, show_alert: true });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'clean.finished'), show_alert: true });
             return;
         }
         const mine = (await cleaningService.getPairs(member.branchId!, weekStart)).filter(p => p.memberId.equals(member._id));
         if (mine.length === 0) {
-            await ctx.answerCallbackQuery({ text: "Yakunlashdan oldin kamida bitta hudud uchun rasmlarni yuklang.", show_alert: true });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'clean.needOne'), show_alert: true });
             return;
         }
         await cleaningService.markDone(member.branchId!, member._id, member.name, weekStart);
         ctx.session.cleaning = undefined;
         await ctx.answerCallbackQuery();
-        await ctx.editMessageText("✅ Rahmat! Tozalash rasmlaringiz qabul qilindi. Shu hafta uchun yuklash yakunlandi.");
+        await ctx.editMessageText(t(ctx.lang, 'clean.thanks'));
 
-        const places = [...new Set(mine.map(p => CLEANING_PLACE_NAMES[p.place]))].join(', ');
         const managers = (await memberService.getAllMembers()).filter(m =>
             m.type === MemberType.MANAGER && m.branchId?.equals(member.branchId!) && m.telegramId !== member.telegramId);
         for (const m of managers) {
-            await ctx.api.sendMessage(m.telegramId, `🧹 ${member.name} shu haftalik tozalash rasmlarini yuklashni yakunladi.\nHududlar: ${places}.`)
+            const mLang = m.language ?? DEFAULT_LANG; // each manager is notified in their own language
+            const places = [...new Set(mine.map(p => t(mLang, `placeName.${p.place}`)))].join(', ');
+            await ctx.api.sendMessage(m.telegramId, t(mLang, 'clean.notifyManager', { name: member.name, places }))
                 .catch((err) => console.error(`cleaning notify failed for ${m.telegramId}:`, err));
         }
     });
 
     // ---- manager side ----
 
-    bot.hears("🧼 Tozalash nazorati", async (ctx) => {
+    bot.hears(allLabels('menu.cleaningControl'), async (ctx) => {
         if (!ctx.from) return;
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!member || !hasManagerPermission(member)) {
-            await ctx.reply("Sizda bu buyruq uchun ruxsat yo'q.");
+            await ctx.reply(t(ctx.lang, 'common.noPermission'));
             return;
         }
         const weekStart = currentWeekStartSeoul();
@@ -186,7 +186,7 @@ export function cleaningController(bot: Bot<MyContext>) {
         ]);
         const counts = new Map<CleaningPlace, number>();
         for (const p of pairs) counts.set(p.place, (counts.get(p.place) ?? 0) + 1);
-        const view = cleaningOverviewView(counts, done.map(d => d.memberName));
+        const view = cleaningOverviewView(ctx.lang, counts, done.map(d => d.memberName));
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
 
@@ -202,15 +202,15 @@ export function cleaningController(bot: Bot<MyContext>) {
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         const place = ctx.callbackQuery.data.split(':')[1];
         if (!member || !hasManagerPermission(member) || !isPlace(place)) {
-            await ctx.answerCallbackQuery({ text: "Ruxsat yo'q." });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
             return;
         }
         const pairs = await cleaningService.getPairs(member.branchId!, currentWeekStartSeoul(), place);
         if (pairs.length === 0) {
-            await ctx.answerCallbackQuery({ text: "Bu hudud uchun joriy haftada rasm yuklanmagan.", show_alert: true });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'clean.noPairs'), show_alert: true });
             return;
         }
-        await ctx.answerCallbackQuery({ text: "Taqdimot tayyorlanmoqda, iltimos kuting..." });
+        await ctx.answerCallbackQuery({ text: t(ctx.lang, 'clean.preparing') });
 
         try {
             const branch = await branchService.getBranchById(member.branchId!);
@@ -223,14 +223,14 @@ export function cleaningController(bot: Bot<MyContext>) {
                 pairs,
                 getImage: (fileId) => fetchPhoto(ctx, fileId),
             });
-            const view = cleaningSubmitView(place);
+            const view = cleaningSubmitView(ctx.lang, place);
             await ctx.replyWithDocument(new InputFile(deck, `cleaning-${place.toLowerCase()}-${dateText}.pptx`), {
                 caption: `Esselamu aleyküm!\n${branch?.name ?? ''} şubesi, bu haftaki ${CLEANING_PLACE_NAMES_TR[place]} temizliği ektedir (${dateText}).\nİlginiz için teşekkürler!`,
                 reply_markup: view.keyboard,
             });
         } catch (err) {
             console.error("cleaning pptx failed:", err);
-            await ctx.reply("Taqdimotni tayyorlashda xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring.");
+            await ctx.reply(t(ctx.lang, 'clean.deckFailed'));
         }
     });
 
@@ -239,22 +239,22 @@ export function cleaningController(bot: Bot<MyContext>) {
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         const message = ctx.callbackQuery.message;
         if (!member || !hasManagerPermission(member) || !message) {
-            await ctx.answerCallbackQuery({ text: "Ruxsat yo'q." });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
             return;
         }
         const branch = await branchService.getBranchById(member.branchId!);
         if (!branch?.cleaningGroupId) {
-            await ctx.answerCallbackQuery({ text: "Filial uchun tozalash guruhi sozlanmagan.", show_alert: true });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'clean.noGroup'), show_alert: true });
             return;
         }
         try {
             await ctx.api.copyMessage(branch.cleaningGroupId, message.chat.id, message.message_id);
         } catch (err) {
             console.error("send cleaning deck to group failed:", err);
-            await ctx.answerCallbackQuery({ text: "Guruhga yuborishda xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring.", show_alert: true });
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'clean.groupFailed'), show_alert: true });
             return;
         }
         await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {}); // no double submit
-        await ctx.answerCallbackQuery({ text: "✅ Taqdimot guruhga yuborildi." });
+        await ctx.answerCallbackQuery({ text: t(ctx.lang, 'clean.sentToGroup') });
     });
 }

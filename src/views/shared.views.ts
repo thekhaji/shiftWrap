@@ -1,65 +1,74 @@
-import { Keyboard } from "grammy";
+import { Keyboard, InlineKeyboard } from "grammy";
 import { Member } from "../libs/types/member";
 import { hasManagerPermission } from "../libs/utils/permission";
+import { DEFAULT_LANG, LANGUAGES, LANGUAGE_NAMES, Lang, t } from "../libs/i18n";
 
 function mainMenuKeyboard(member?: Member) {
-    const employeeKeyboard = new Keyboard()
-        .text("✅ Check In")
-        .text("🚪 Check Out")
-        .row()
-        .text("📊 Hisobot")
-        .row()
-        .text("🧹 Haftalik tozalash")
-        .row()
-        .text("🗂 Eski hisobotlar")
-        .resized()
-        .persistent();
+    const lang = member?.language ?? DEFAULT_LANG;
 
     if (member?.type === "BOSS" || member?.type === "ADMIN") {
-        const keyboard = new Keyboard()
-            .text("🏢 Filial qo'shish")
+        return new Keyboard()
+            .text(t(lang, 'menu.addBranch'))
             .row()
-            .text("👔 Filialga boshqaruvchi tayinlash")
+            .text(t(lang, 'menu.assignManager'))
             .row()
-            .text("📊 Filial hisoboti")
+            .text(t(lang, 'menu.branchReport'))
+            .row()
+            .text(t(lang, 'menu.language'))
             .resized()
             .persistent();
-        return keyboard;
-    }
-    else if (member && (hasManagerPermission(member))) {
-        employeeKeyboard.row().text("📦 Ombor");
-        employeeKeyboard.row().text("🧼 Tozalash nazorati");
-        employeeKeyboard.row().text("📊 Filial hisoboti");
-        employeeKeyboard.row().text("👥 Xodimlar ma'lumotlarini sozlash");
-
     }
 
-    return employeeKeyboard;
+    const employeeKeyboard = new Keyboard()
+        .text(t(lang, 'menu.checkIn'))
+        .text(t(lang, 'menu.checkOut'))
+        .row()
+        .text(t(lang, 'menu.report'))
+        .row()
+        .text(t(lang, 'menu.cleaning'))
+        .row()
+        .text(t(lang, 'menu.history'));
+
+    if (member && hasManagerPermission(member)) {
+        employeeKeyboard.row().text(t(lang, 'menu.storage'));
+        employeeKeyboard.row().text(t(lang, 'menu.cleaningControl'));
+        employeeKeyboard.row().text(t(lang, 'menu.branchReport'));
+        employeeKeyboard.row().text(t(lang, 'menu.employees'));
+    }
+
+    return employeeKeyboard.row().text(t(lang, 'menu.language')).resized().persistent();
 }
 
 export function mainMenuView(member: Member) {
     return {
-        text: `Xush kelibsiz, ${member.name}! 👋\nKerakli amalni tanlang:`,
+        text: t(member.language ?? DEFAULT_LANG, 'common.welcome', { name: member.name }),
         keyboard: mainMenuKeyboard(member),
     };
 }
 
 export function backToMenuView(member?: Member) {
     return {
-        text: "Bosh menyu 🏠",
+        text: t(member?.language ?? DEFAULT_LANG, 'common.home'),
         keyboard: mainMenuKeyboard(member),
     };
 }
 
 export function menuUpdatedView(member: Member) {
     return {
-        text: "Botda yangilanish bo'ldi! ✨\nMenyu yangilandi, quyidagi tugmalardan foydalanishingiz mumkin:",
+        text: t(member.language ?? DEFAULT_LANG, 'common.menuUpdated'),
         keyboard: mainMenuKeyboard(member),
     };
 }
 
-export function errorView() {
-    return {
-        text: "Xatolik yuz berdi. Iltimos, qayta urinib ko'ring 🙏",
-    };
+export function errorView(lang: Lang) {
+    return { text: t(lang, 'common.error') };
+}
+
+// language names are shown in their own language, so the same picker works for everyone
+export function languagePickerView(callbackPrefix: string) {
+    const keyboard = new InlineKeyboard();
+    for (const lang of LANGUAGES) {
+        keyboard.text(LANGUAGE_NAMES[lang], `${callbackPrefix}:${lang}`).row();
+    }
+    return { text: t('uz', 'lang.choose'), keyboard };
 }

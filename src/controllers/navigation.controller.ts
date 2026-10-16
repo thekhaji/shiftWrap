@@ -2,24 +2,13 @@ import { Bot } from 'grammy';
 import { MyContext } from '../server';
 import MemberService from '../models/Member.service';
 import { backToMenuView } from '../views/index';
+import { allLabels, allMenuLabels } from '../libs/i18n';
 
 const memberService = new MemberService();
 
 // Every reply-keyboard button. Tapping one abandons whatever free-text/location prompt
 // is pending, so the button's own label is never consumed as the answer to that prompt.
-const MENU_BUTTONS = new Set([
-    "✅ Check In",
-    "🚪 Check Out",
-    "📊 Hisobot",
-    "🧹 Haftalik tozalash",
-    "🧼 Tozalash nazorati",
-    "🗂 Eski hisobotlar",
-    "🏢 Filial qo'shish",
-    "👔 Filialga boshqaruvchi tayinlash",
-    "📊 Filial hisoboti",
-    "👥 Xodimlar ma'lumotlarini sozlash",
-    "🔙 Bosh menyu",
-]);
+const MENU_BUTTONS = allMenuLabels();
 
 export function navigationController(bot: Bot<MyContext>) {
     // must be registered before any controller that reads session.awaitingAction
@@ -35,7 +24,7 @@ export function navigationController(bot: Bot<MyContext>) {
         return next();
     });
 
-    bot.hears("🔙 Bosh menyu", async (ctx) => {
+    bot.hears(allLabels('menu.home'), async (ctx) => {
         if (!ctx.from) return;
 
         const member = await memberService.getMemberByTelegramId(ctx.from.id);

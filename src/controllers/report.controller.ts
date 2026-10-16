@@ -9,6 +9,7 @@ import { isBossOrAdmin, hasManagerPermission, isManagerOf } from '../libs/utils/
 import { branchPickerView, monthPickerView } from '../views/index';
 import { Attendance } from '../libs/types/attendance';
 import { getMonthsBetween } from '../libs/utils/date';
+import { allLabels, t } from '../libs/i18n';
 
 const attendanceService = new AttendanceService();
 const memberService = new MemberService();
@@ -18,13 +19,13 @@ const branchService = new BranchService();
 async function sendBranchReport(ctx: MyContext, branchId: Types.ObjectId, year: number, month: number) {
     const branch = await branchService.getBranchById(branchId);
     if (!branch) {
-        await ctx.reply("Filial topilmadi.");
+        await ctx.reply(t(ctx.lang, 'common.branchNotFound'));
         return;
     }
 
     const memberIds = await attendanceService.getMemberIdsForBranchAndMonth(branchId, year, month);
     if (memberIds.length === 0) {
-        await ctx.reply("Bu oy uchun ma'lumot topilmadi.");
+        await ctx.reply(t(ctx.lang, 'report.noData'));
         return;
     }
 
@@ -41,12 +42,12 @@ async function sendBranchReport(ctx: MyContext, branchId: Types.ObjectId, year: 
 }
 
 export function reportController(bot: Bot<MyContext>) {
-    bot.hears("📊 Hisobot", async (ctx) => {
+    bot.hears(allLabels('menu.report'), async (ctx) => {
         if (!ctx.from) return;
 
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!member) {
-            await ctx.reply("Siz ro'yxatdan o'tmagansiz.");
+            await ctx.reply(t(ctx.lang, 'common.notRegistered'));
             return;
         }
 
@@ -57,7 +58,7 @@ export function reportController(bot: Bot<MyContext>) {
         const branchIds = await attendanceService.getBranchIdsForMemberAndMonth(member._id, year, month);
 
         if (branchIds.length === 0) {
-            await ctx.reply("Sizda ushbu oy uchun hisobot mavjud emas.");
+            await ctx.reply(t(ctx.lang, 'report.none'));
             return;
         }
 
@@ -70,11 +71,11 @@ export function reportController(bot: Bot<MyContext>) {
         }
 
         const branches = await branchService.getBranchesByIds(branchIds);
-        const view = branchPickerView(branches, year, month, "personal_report");
+        const view = branchPickerView(ctx.lang, branches, year, month, "personal_report");
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
 
-    bot.hears("📊 Filial hisoboti", async (ctx) => {
+    bot.hears(allLabels('menu.branchReport'), async (ctx) => {
         if (!ctx.from) return;
 
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
@@ -87,10 +88,10 @@ export function reportController(bot: Bot<MyContext>) {
         if (hasManagerPermission(member)) {
             await sendBranchReport(ctx, member.branchId!, year, month);
         } else if (isBossOrAdmin(member)) {
-            const view = branchPickerView(await branchService.getAllBranches(), year, month, "branch_report");
+            const view = branchPickerView(ctx.lang, await branchService.getAllBranches(), year, month, "branch_report");
             await ctx.reply(view.text, { reply_markup: view.keyboard });
         } else {
-            await ctx.reply("Sizda bu buyruq uchun ruxsat yo'q.");
+            await ctx.reply(t(ctx.lang, 'common.noPermission'));
         }
     });
 
@@ -106,21 +107,21 @@ export function reportController(bot: Bot<MyContext>) {
 
         // callback data is client-controlled, so re-check permission for the requested branch
         if (!isBossOrAdmin(member) && !isManagerOf(member, branchIdStr)) {
-            await ctx.reply("Sizda bu buyruq uchun ruxsat yo'q.");
+            await ctx.reply(t(ctx.lang, 'common.noPermission'));
             return;
         }
 
         await sendBranchReport(ctx, new Types.ObjectId(branchIdStr), Number(year), Number(month));
     });
 
-    bot.hears("🗂 Eski hisobotlar", async (ctx) => {
+    bot.hears(allLabels('menu.history'), async (ctx) => {
         if (!ctx.from) return;
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!member) return;
 
         const firstCheckIn = await attendanceService.getFirstCheckInDate(member._id);
         if (!firstCheckIn) {
-            await ctx.reply("Sizda hali hech qanday hisobot yo'q.");
+            await ctx.reply(t(ctx.lang, 'report.noHistory'));
             return;
         }
 
@@ -131,11 +132,11 @@ export function reportController(bot: Bot<MyContext>) {
         );
 
         if (months.length === 0) {
-            await ctx.reply("Hali o'tgan oylar uchun hisobot mavjud emas.");
+            await ctx.reply(t(ctx.lang, 'report.noPast'));
             return;
         }
 
-        const view = monthPickerView(months);
+        const view = monthPickerView(ctx.lang, months);
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
 
@@ -151,7 +152,7 @@ export function reportController(bot: Bot<MyContext>) {
         const branchIds = await attendanceService.getBranchIdsForMemberAndMonth(member._id, year, month);
 
         if (branchIds.length === 0) {
-            await ctx.reply("Bu oy uchun ma'lumot topilmadi.");
+            await ctx.reply(t(ctx.lang, 'report.noData'));
             return;
         }
 
@@ -162,7 +163,7 @@ export function reportController(bot: Bot<MyContext>) {
             return;
         }
         const branches = await branchService.getBranchesByIds(branchIds);
-        const view = branchPickerView(branches, year, month, "personal_report");
+        const view = branchPickerView(ctx.lang, branches, year, month, "personal_report");
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
 
