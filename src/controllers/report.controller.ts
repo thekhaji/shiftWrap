@@ -9,7 +9,6 @@ import { isBossOrAdmin, hasManagerPermission, isManagerOf } from '../libs/utils/
 import { branchPickerView, monthPickerView } from '../views/index';
 import { Attendance } from '../libs/types/attendance';
 import { getMonthsBetween } from '../libs/utils/date';
-import { log } from 'node:console';
 
 const attendanceService = new AttendanceService();
 const memberService = new MemberService();
@@ -88,7 +87,6 @@ export function reportController(bot: Bot<MyContext>) {
         if (hasManagerPermission(member)) {
             await sendBranchReport(ctx, member.branchId!, year, month);
         } else if (isBossOrAdmin(member)) {
-            console.log("boos is accessing reports!")
             const view = branchPickerView(await branchService.getAllBranches(), year, month, "branch_report");
             await ctx.reply(view.text, { reply_markup: view.keyboard });
         } else {

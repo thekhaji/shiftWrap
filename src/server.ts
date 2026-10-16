@@ -13,6 +13,7 @@ import { orderController } from './controllers/order.controller';
 import { productController } from './controllers/product.controller';
 import { ProductCategory } from './libs/enums/product.enum';
 import { CleaningPlace } from './libs/enums/cleaning.enum';
+import { startMenuSync } from './libs/utils/menuSync';
 import { cleaningController } from './controllers/cleaning.controller';
 
 export interface SessionData {
@@ -55,6 +56,7 @@ mongoose.connect(process.env.MONGO_URL as string)
     orderController(bot);
     productController(bot);
     cleaningController(bot);
+    startMenuSync(bot);
     bot.start();
 })
 .catch((err)=>{

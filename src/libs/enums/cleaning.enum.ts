@@ -8,7 +8,7 @@ export enum CleaningPlace {
 export const CLEANING_PLACE_LABELS: Record<CleaningPlace, string> = {
     SALON: '🛋 Zal',
     KITCHEN: '🍳 Oshxona',
-    PREP: '🥬 Tayyorlov joyi',
+    PREP: '🥬 Tayyorlov hududi',
     OFFICE: '🗄 Ofis',
 };
 
@@ -16,7 +16,7 @@ export const CLEANING_PLACE_LABELS: Record<CleaningPlace, string> = {
 export const CLEANING_PLACE_NAMES: Record<CleaningPlace, string> = {
     SALON: 'Zal',
     KITCHEN: 'Oshxona',
-    PREP: 'Tayyorlov joyi',
+    PREP: 'Tayyorlov hududi',
     OFFICE: 'Ofis',
 };
 

@@ -2,8 +2,11 @@ import { Bot } from 'grammy';
 import { MyContext } from '../server';
 import BranchService from '../models/Branch.service';
 import MemberService from '../models/Member.service';
-import { askBranchNameView, askLocationView, branchRegisteredView, mainMenuView } from '../views/index';
+import { askBranchNameView, askLocationView, branchRegisteredView, mainMenuView, managerBranchPickerView, managerCandidatePickerView } from '../views/index';
 import Errors from '../libs/Errors';
+import { MemberType } from '../libs/enums/member.enum';
+import { isBossOrAdmin } from '../libs/utils/permission';
+import { Types } from 'mongoose';
 
 const branchService = new BranchService();
 const memberService = new MemberService();
@@ -11,6 +14,11 @@ const memberService = new MemberService();
 export function branchController(bot: Bot<MyContext>) {
     bot.hears("🏢 Filial qo'shish", async (ctx) => {
         if (!ctx.from) return;
+        const actor = await memberService.getMemberByTelegramId(ctx.from.id);
+        if (!actor || !isBossOrAdmin(actor)) {
+            await ctx.reply("Sizda bu buyruq uchun ruxsat yo'q.");
+            return;
+        }
         ctx.session.awaitingAction = "register_branch_name";
         ctx.session.awaitingSince = Date.now();
         const view = askBranchNameView();
@@ -83,5 +91,65 @@ export function branchController(bot: Bot<MyContext>) {
                 await ctx.reply("Xatolik yuz berdi.");
             }
         }
+    });
+
+    // ---- appoint a branch manager (boss/admin only) ----
+
+    bot.hears("👔 Filialga boshqaruvchi tayinlash", async (ctx) => {
+        if (!ctx.from) return;
+        const actor = await memberService.getMemberByTelegramId(ctx.from.id);
+        if (!actor || !isBossOrAdmin(actor)) {
+            await ctx.reply("Sizda bu buyruq uchun ruxsat yo'q.");
+            return;
+        }
+        const branches = await branchService.getAllBranches();
+        if (branches.length === 0) {
+            await ctx.reply("Hali filiallar qo'shilmagan.");
+            return;
+        }
+        const view = managerBranchPickerView(branches);
+        await ctx.reply(view.text, { reply_markup: view.keyboard });
+    });
+
+    bot.callbackQuery(/^mgr_branch:/, async (ctx) => {
+        const actor = await memberService.getMemberByTelegramId(ctx.from.id);
+        const branchId = ctx.callbackQuery.data.split(":")[1];
+        if (!actor || !isBossOrAdmin(actor) || !Types.ObjectId.isValid(branchId)) {
+            await ctx.answerCallbackQuery({ text: "Ruxsat yo'q." });
+            return;
+        }
+        const branch = await branchService.getBranchById(new Types.ObjectId(branchId));
+        if (!branch) {
+            await ctx.answerCallbackQuery({ text: "Filial topilmadi." });
+            return;
+        }
+        const candidates = (await memberService.getAllMembers())
+            .filter(m => m.type === MemberType.USER || m.type === MemberType.MANAGER)
+            .sort((a, b) => a.name.localeCompare(b.name));
+        if (candidates.length === 0) {
+            await ctx.answerCallbackQuery({ text: "Tayinlash uchun xodimlar topilmadi.", show_alert: true });
+            return;
+        }
+        await ctx.answerCallbackQuery();
+        const view = managerCandidatePickerView(branch, candidates);
+        await ctx.editMessageText(view.text, { reply_markup: view.keyboard });
+    });
+
+    bot.callbackQuery(/^mgr_user:/, async (ctx) => {
+        const actor = await memberService.getMemberByTelegramId(ctx.from.id);
+        const [branchId, telegramId] = ctx.callbackQuery.data.split(":")[1].split(",");
+        if (!actor || !isBossOrAdmin(actor) || !Types.ObjectId.isValid(branchId)) {
+            await ctx.answerCallbackQuery({ text: "Ruxsat yo'q." });
+            return;
+        }
+        const branch = await branchService.getBranchById(new Types.ObjectId(branchId));
+        const target = await memberService.getMemberByTelegramId(Number(telegramId));
+        if (!branch || !target || isBossOrAdmin(target)) {
+            await ctx.answerCallbackQuery({ text: "Xodim yoki filial topilmadi.", show_alert: true });
+            return;
+        }
+        const updated = await memberService.updateMember(target.telegramId, { type: MemberType.MANAGER, branchId: branch._id });
+        await ctx.answerCallbackQuery();
+        await ctx.editMessageText(`✅ ${updated.name} ${branch.name} filiali boshqaruvchisi etib tayinlandi.`);
     });
 }

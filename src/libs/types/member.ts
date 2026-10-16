@@ -29,6 +29,7 @@ export interface MemberInput {
 // Fields a manager/boss/admin may set on an existing member — distinct from MemberInput
 // (which shapes self-registration) so a member can never submit these about themselves.
 export interface MemberManagerUpdate {
+    type?: MemberType;
     name?: string;
     phone?: string;
     branchId?: Types.ObjectId;

@@ -16,7 +16,7 @@ const memberService = new MemberService();
 const branchService = new BranchService();
 const cleaningService = new CleaningService();
 
-const FINISHED_TEXT = "Siz bu hafta uchun rasm yuklashni tugatgansiz. Yangi hafta dushanbadan boshlanadi.";
+const FINISHED_TEXT = "Siz bu haftalik tozalash rasmlarini allaqachon yakunlagansiz. Yangi hafta dushanba kuni boshlanadi.";
 
 function isPlace(value: string): value is CleaningPlace {
     return Object.values(CleaningPlace).includes(value as CleaningPlace);
@@ -45,10 +45,10 @@ export function cleaningController(bot: Bot<MyContext>) {
     }
 
     // 1. Employee opens the place list
-    bot.hears("🧹 Tozalash", async (ctx) => {
+    bot.hears("🧹 Haftalik tozalash", async (ctx) => {
         const member = await getCleaner(ctx);
         if (!member) {
-            await ctx.reply("Sizga hali filial biriktirilmagan.");
+            await ctx.reply("Sizga hali filial biriktirilmagan. Iltimos, rahbariyatga murojaat qiling.");
             return;
         }
         ctx.session.cleaning = undefined;
@@ -95,7 +95,7 @@ export function cleaningController(bot: Bot<MyContext>) {
 
         const albumId = ctx.message.media_group_id;
         if (!albumId) {
-            await ctx.reply("Ikkala rasmni bitta albom qilib birga yuboring (oldingi va keyingi).");
+            await ctx.reply("Iltimos, tozalashdan oldingi va keyingi rasmlarni bitta albom sifatida yuboring.");
             return;
         }
         if (albumId === ctx.session.lastCleaningAlbumId) return; // extra photo of an album already saved
@@ -119,14 +119,14 @@ export function cleaningController(bot: Bot<MyContext>) {
         });
         ctx.session.lastCleaningAlbumId = albumId;
         ctx.session.cleaning = undefined;
-        const view = await placesView(member, "✅ Juftlik saqlandi. Boshqa joyni tanlashingiz yoki shu joyga yana rasm yuklashingiz mumkin.");
+        const view = await placesView(member, "✅ Rasmlar muvaffaqiyatli saqlandi. Boshqa hududni tanlashingiz yoki shu hudud uchun yana bir juft rasm yuklashingiz mumkin.");
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
 
     // text while waiting for a photo
     bot.on("message:text", async (ctx, next) => {
         if (!ctx.session.cleaning) return next();
-        await ctx.reply("Iltimos, 2 ta rasmni albom qilib yuboring yoki «⬅️ Orqaga» tugmasini bosing.");
+        await ctx.reply("Iltimos, 2 ta rasmni bitta albom sifatida yuboring yoki «⬅️ Hududlar ro'yxatiga qaytish» tugmasini bosing.");
     });
 
     // 4. Back to the place list (drops a half-finished pair)
@@ -153,26 +153,26 @@ export function cleaningController(bot: Bot<MyContext>) {
         }
         const mine = (await cleaningService.getPairs(member.branchId!, weekStart)).filter(p => p.memberId.equals(member._id));
         if (mine.length === 0) {
-            await ctx.answerCallbackQuery({ text: "Avval kamida bitta joy uchun rasmlarni yuklang.", show_alert: true });
+            await ctx.answerCallbackQuery({ text: "Yakunlashdan oldin kamida bitta hudud uchun rasmlarni yuklang.", show_alert: true });
             return;
         }
         await cleaningService.markDone(member.branchId!, member._id, member.name, weekStart);
         ctx.session.cleaning = undefined;
         await ctx.answerCallbackQuery();
-        await ctx.editMessageText("✅ Rahmat! Tozalash rasmlaringiz qabul qilindi. Bu hafta uchun yuklash yopildi.");
+        await ctx.editMessageText("✅ Rahmat! Tozalash rasmlaringiz qabul qilindi. Shu hafta uchun yuklash yakunlandi.");
 
         const places = [...new Set(mine.map(p => CLEANING_PLACE_NAMES[p.place]))].join(', ');
         const managers = (await memberService.getAllMembers()).filter(m =>
             m.type === MemberType.MANAGER && m.branchId?.equals(member.branchId!) && m.telegramId !== member.telegramId);
         for (const m of managers) {
-            await ctx.api.sendMessage(m.telegramId, `🧹 ${member.name} shu hafta uchun tozalash rasmlarini yuklashni tugatdi: ${places}.`)
+            await ctx.api.sendMessage(m.telegramId, `🧹 ${member.name} shu haftalik tozalash rasmlarini yuklashni yakunladi.\nHududlar: ${places}.`)
                 .catch((err) => console.error(`cleaning notify failed for ${m.telegramId}:`, err));
         }
     });
 
     // ---- manager side ----
 
-    bot.hears("🧼 Tozalash hisoboti", async (ctx) => {
+    bot.hears("🧼 Tozalash nazorati", async (ctx) => {
         if (!ctx.from) return;
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!member || !hasManagerPermission(member)) {
@@ -207,10 +207,10 @@ export function cleaningController(bot: Bot<MyContext>) {
         }
         const pairs = await cleaningService.getPairs(member.branchId!, currentWeekStartSeoul(), place);
         if (pairs.length === 0) {
-            await ctx.answerCallbackQuery({ text: "Bu joy uchun shu hafta rasm yuklanmagan.", show_alert: true });
+            await ctx.answerCallbackQuery({ text: "Bu hudud uchun joriy haftada rasm yuklanmagan.", show_alert: true });
             return;
         }
-        await ctx.answerCallbackQuery({ text: "Taqdimot tayyorlanmoqda..." });
+        await ctx.answerCallbackQuery({ text: "Taqdimot tayyorlanmoqda, iltimos kuting..." });
 
         try {
             const branch = await branchService.getBranchById(member.branchId!);
@@ -230,7 +230,7 @@ export function cleaningController(bot: Bot<MyContext>) {
             });
         } catch (err) {
             console.error("cleaning pptx failed:", err);
-            await ctx.reply("Taqdimotni tayyorlab bo'lmadi. Keyinroq urinib ko'ring.");
+            await ctx.reply("Taqdimotni tayyorlashda xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring.");
         }
     });
 
@@ -244,17 +244,17 @@ export function cleaningController(bot: Bot<MyContext>) {
         }
         const branch = await branchService.getBranchById(member.branchId!);
         if (!branch?.cleaningGroupId) {
-            await ctx.answerCallbackQuery({ text: "Filialga tozalash guruhi ulanmagan.", show_alert: true });
+            await ctx.answerCallbackQuery({ text: "Filial uchun tozalash guruhi sozlanmagan.", show_alert: true });
             return;
         }
         try {
             await ctx.api.copyMessage(branch.cleaningGroupId, message.chat.id, message.message_id);
         } catch (err) {
             console.error("send cleaning deck to group failed:", err);
-            await ctx.answerCallbackQuery({ text: "Guruhga yuborib bo'lmadi. Keyinroq urinib ko'ring.", show_alert: true });
+            await ctx.answerCallbackQuery({ text: "Guruhga yuborishda xatolik yuz berdi. Iltimos, keyinroq qayta urinib ko'ring.", show_alert: true });
             return;
         }
         await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {}); // no double submit
-        await ctx.answerCallbackQuery({ text: "✅ Guruhga yuborildi." });
+        await ctx.answerCallbackQuery({ text: "✅ Taqdimot guruhga yuborildi." });
     });
 }

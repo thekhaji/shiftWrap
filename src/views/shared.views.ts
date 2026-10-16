@@ -9,7 +9,7 @@ function mainMenuKeyboard(member?: Member) {
         .row()
         .text("📊 Hisobot")
         .row()
-        .text("🧹 Tozalash")
+        .text("🧹 Haftalik tozalash")
         .row()
         .text("🗂 Eski hisobotlar")
         .resized()
@@ -19,7 +19,7 @@ function mainMenuKeyboard(member?: Member) {
         const keyboard = new Keyboard()
             .text("🏢 Filial qo'shish")
             .row()
-            .text("Filialga boshqaruchi saylash")
+            .text("👔 Filialga boshqaruvchi tayinlash")
             .row()
             .text("📊 Filial hisoboti")
             .resized()
@@ -28,7 +28,7 @@ function mainMenuKeyboard(member?: Member) {
     }
     else if (member && (hasManagerPermission(member))) {
         employeeKeyboard.row().text("📦 Ombor");
-        employeeKeyboard.row().text("🧼 Tozalash hisoboti");
+        employeeKeyboard.row().text("🧼 Tozalash nazorati");
         employeeKeyboard.row().text("📊 Filial hisoboti");
         employeeKeyboard.row().text("👥 Xodimlar ma'lumotlarini sozlash");
 
