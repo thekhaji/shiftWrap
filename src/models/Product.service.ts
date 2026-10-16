@@ -28,7 +28,7 @@ class ProductService {
             const product = await this.productModel.create(input);
             return product.toObject() as Product;
         } catch (err: any) {
-            if (err.code === 11000) throw new Errors(HttpCode.CONFLICT, Message.EXISTING_PRODUCT); // add a PRODUCT_EXISTS message later
+            if (err.code === 11000) throw new Errors(HttpCode.CONFLICT, Message.EXISTING_USER); // add PRODUCT_EXISTS later
             throw err;
         }
     }

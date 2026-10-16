@@ -11,6 +11,9 @@ import { EditableMemberField } from './libs/types/member';
 import { debugController } from './controllers/debug.controller';
 import { orderController } from './controllers/order.controller';
 import { productController } from './controllers/product.controller';
+import { ProductCategory } from './libs/enums/product.enum';
+import { CleaningPlace } from './libs/enums/cleaning.enum';
+import { cleaningController } from './controllers/cleaning.controller';
 
 export interface SessionData {
     awaitingAction?: "checkin" | "checkout" | "register_branch_name" | "register_branch_location" | "edit_member_field";
@@ -19,13 +22,21 @@ export interface SessionData {
     editingMemberTelegramId?: number;
     editingField?: EditableMemberField;
     addProduct?: {
-        step: 'name' | 'photo' | 'link' | 'note';
+        step: 'name' | 'category' | 'photo' | 'link' | 'note';
         branchId: string;           // ObjectId stored as a string
         name?: string;
+        category?: ProductCategory;
         imageFileId?: string;
         orderLink?: string;
         orderNote?: string;
     };
+    cleaning?: {
+        place: CleaningPlace;
+        albumId?: string;                                   // media_group_id of the album being collected
+        photos?: { messageId: number; fileId: string }[];   // album photos so far (needs 2: before, after)
+    };
+    lastCleaningAlbumId?: string;  // saved album; its leftover photos are ignored
+    basketMessageIds?: number[];   // message ids of the catalog, so they can be deleted later
 }
 
 export type MyContext = Context & SessionFlavor<SessionData>;
@@ -43,6 +54,7 @@ mongoose.connect(process.env.MONGO_URL as string)
     debugController(bot);
     orderController(bot);
     productController(bot);
+    cleaningController(bot);
     bot.start();
 })
 .catch((err)=>{

@@ -49,10 +49,6 @@ class OrderService {
         ).lean<Order>();
     }
 
-    async cancelDraft(draftId: Types.ObjectId): Promise<void> {
-        await this.orderModel.deleteOne({ _id: draftId, status: OrderStatus.DRAFT });
-    }
-
     // ORDER -> DRAFT, used when posting to the group failed
     async revertToDraft(orderId: Types.ObjectId): Promise<void> {
         await this.orderModel.updateOne(
@@ -92,6 +88,7 @@ class OrderService {
     }
 
     async getById(orderId: string): Promise<Order | null> {
+        if (!Types.ObjectId.isValid(orderId)) return null;
         return this.orderModel.findById(orderId).lean<Order>();
     }
 }

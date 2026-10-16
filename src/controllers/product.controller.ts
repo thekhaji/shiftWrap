@@ -1,27 +1,44 @@
-import { Bot } from 'grammy';
+import { Bot, InlineKeyboard } from 'grammy';
 import { Types } from 'mongoose';
 import { MyContext } from '../server';
 import MemberService from '../models/Member.service';
 import BranchService from '../models/Branch.service';
 import ProductService from '../models/Product.service';
+import { ProductCategory } from '../libs/enums/product.enum';
 import { hasManagerPermission, isBossOrAdmin } from '../libs/utils/permission';
-import { productStepView } from '../views/index';
-import { InlineKeyboard } from 'grammy';
+import { productStepView, productCategoryView } from '../views/index';
 
 const memberService = new MemberService();
 const branchService = new BranchService();
 const productService = new ProductService();
 
+// tapping a main-menu button cancels an unfinished add-product flow
+const MENU_LABELS = new Set([
+    "✅ Check In", "🚪 Check Out", "📊 Hisobot", "🏢 Filial hisoboti", "📦 Ombor",
+]);
+
+type Step = 'name' | 'category' | 'photo' | 'link' | 'note';
+
 export function productController(bot: Bot<MyContext>) {
 
-    async function askStep(ctx: MyContext, step: 'name' | 'photo' | 'link' | 'note') {
+    async function askStep(ctx: MyContext, step: Step) {
         ctx.session.addProduct!.step = step;
+        if (step === 'category') {
+            const view = productCategoryView();
+            await ctx.reply(view.text, { reply_markup: view.keyboard });
+            return;
+        }
         const view = productStepView(step);
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     }
 
     async function finish(ctx: MyContext) {
         const w = ctx.session.addProduct!;
+        if (!w.name || !w.category) {
+            ctx.session.addProduct = undefined;
+            await ctx.reply("Xatolik yuz berdi. Qaytadan boshlang.");
+            return;
+        }
         if (!w.orderLink && !w.orderNote) {
             await ctx.reply("Havola yoki izohdan kamida bittasi kerak.");
             await askStep(ctx, 'link');
@@ -30,11 +47,12 @@ export function productController(bot: Bot<MyContext>) {
         try {
             await productService.createProduct({
                 branchId: new Types.ObjectId(w.branchId),
-                name: w.name!,
+                name: w.name,
+                category: w.category,
                 imageFileId: w.imageFileId,
                 orderLink: w.orderLink,
                 orderNote: w.orderNote,
-            } as any);
+            });
             await ctx.reply(`✅ "${w.name}" qo'shildi.`);
         } catch (err) {
             console.error("add product failed:", err);
@@ -73,25 +91,52 @@ export function productController(bot: Bot<MyContext>) {
         await askStep(ctx, 'name');
     });
 
+    // category chosen
+    bot.callbackQuery(/^product_cat:/, async (ctx) => {
+        const w = ctx.session.addProduct;
+        await ctx.answerCallbackQuery();
+        if (!w || w.step !== 'category') return; // stale button
+        const cat = ctx.callbackQuery.data.split(':')[1] as ProductCategory;
+        if (!Object.values(ProductCategory).includes(cat)) return;
+        w.category = cat;
+        await askStep(ctx, 'photo');
+    });
+
     // text answers: name, link, note
     bot.on("message:text", async (ctx, next) => {
         const w = ctx.session.addProduct;
-        if (!w) return next();               // not in the flow: let other handlers run
+        if (!w) return next();
+
         const text = ctx.message.text.trim();
-        if (w.step === 'name') { w.name = text; await askStep(ctx, 'photo'); }
-        else if (w.step === 'photo') { await ctx.reply("Rasm yuboring yoki o'tkazib yuboring."); }
-        else if (w.step === 'link') {
-            if (!/^https?:\/\//i.test(text)) { await ctx.reply("Havola http:// yoki https:// bilan boshlanishi kerak."); return; }
-            w.orderLink = text; await askStep(ctx, 'note');
+        if (MENU_LABELS.has(text)) {
+            ctx.session.addProduct = undefined;
+            return next();
         }
-        else if (w.step === 'note') { w.orderNote = text; await finish(ctx); }
+
+        if (w.step === 'name') {
+            w.name = text;
+            await askStep(ctx, 'category');
+        } else if (w.step === 'category') {
+            await ctx.reply("Guruhni tugmalardan tanlang.");
+        } else if (w.step === 'photo') {
+            await ctx.reply("Rasm yuboring yoki o'tkazib yuboring.");
+        } else if (w.step === 'link') {
+            if (!/^https?:\/\//i.test(text)) {
+                await ctx.reply("Havola http:// yoki https:// bilan boshlanishi kerak.");
+                return;
+            }
+            w.orderLink = text;
+            await askStep(ctx, 'note');
+        } else if (w.step === 'note') {
+            w.orderNote = text;
+            await finish(ctx);
+        }
     });
 
-    // photo answer
     bot.on("message:photo", async (ctx, next) => {
         const w = ctx.session.addProduct;
         if (!w || w.step !== 'photo') return next();
-        w.imageFileId = ctx.message.photo[ctx.message.photo.length - 1].file_id; // largest size
+        w.imageFileId = ctx.message.photo[ctx.message.photo.length - 1].file_id;
         await askStep(ctx, 'link');
     });
 

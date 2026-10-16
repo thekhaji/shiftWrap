@@ -1,11 +1,13 @@
 import mongoose, { Schema } from 'mongoose';
 import { Product } from '../libs/types/product';
+import { ProductCategory } from '../libs/enums/product.enum';
 
 const productSchema = new Schema<Product>(
     {
         branchId: { type: Schema.Types.ObjectId, ref: 'Branch', required: true },
         name: { type: String, required: true, trim: true },
         imageFileId: { type: String },
+        category: { type: String, enum: Object.values(ProductCategory), required: true },
         code: { type: String },
         orderLink: { type: String },
         orderNote: { type: String },

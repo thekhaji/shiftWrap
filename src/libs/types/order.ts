@@ -9,12 +9,12 @@ export interface OrderItem {
 export interface Order {
     _id: Types.ObjectId;
     branchId: Types.ObjectId;
-    requestedBy: Types.ObjectId;    // member
+    requestedBy: Types.ObjectId;
     status: OrderStatus;
     items: OrderItem[];
     orderedBy?: Types.ObjectId;
     receivedBy?: Types.ObjectId;
-    groupMessageId?: number;        // the message currently shown in the group
+    groupMessageId?: number;    // the message currently shown in the group
     createdAt: Date;
     updatedAt: Date;
 }

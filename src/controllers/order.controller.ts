@@ -5,9 +5,10 @@ import MemberService from '../models/Member.service';
 import BranchService from '../models/Branch.service';
 import ProductService from '../models/Product.service';
 import OrderService from '../models/Order.service';
+import { ProductCategory, CATEGORY_LABELS } from '../libs/enums/product.enum';
 import { Order } from '../libs/types/order';
 import { hasManagerPermission, isBossOrAdmin, isManagerOf } from '../libs/utils/permission';
-import { orderPickerView, orderMessageView, storageMenuView } from '../views/index';
+import { productCardView, orderCategoryView, orderControlView, orderMessageView, storageMenuView } from '../views/index';
 
 const memberService = new MemberService();
 const branchService = new BranchService();
@@ -15,6 +16,16 @@ const productService = new ProductService();
 const orderService = new OrderService();
 
 export function orderController(bot: Bot<MyContext>) {
+
+    // delete the catalog cards (and control message) from the chat
+    async function clearBasket(ctx: MyContext) {
+        const ids = ctx.session.basketMessageIds ?? [];
+        ctx.session.basketMessageIds = undefined;
+        if (!ctx.chat) return;
+        for (const id of ids) {
+            await ctx.api.deleteMessage(ctx.chat.id, id).catch(() => {});
+        }
+    }
 
     // 1. Open the storage menu
     bot.hears("📦 Ombor", async (ctx) => {
@@ -28,8 +39,27 @@ export function orderController(bot: Bot<MyContext>) {
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
 
-    // 2. Open the basket
-    bot.callbackQuery("order_start", async (ctx) => {
+    // 2. Show the category list
+    async function showCategories(ctx: MyContext, branchId: Types.ObjectId) {
+        const products = await productService.getActiveProductsByBranch(branchId);
+        if (products.length === 0) {
+            await ctx.reply("Bu filialda hali mahsulotlar yo'q.");
+            return;
+        }
+        const counts = new Map<ProductCategory, number>();
+        let uncategorized = 0;
+        for (const p of products) {
+            if (p.category) counts.set(p.category, (counts.get(p.category) ?? 0) + 1);
+            else uncategorized++;
+        }
+
+        await clearBasket(ctx); // reopening removes the old cards
+        const view = orderCategoryView(counts, uncategorized);
+        const msg = await ctx.reply(view.text, { reply_markup: view.keyboard });
+        ctx.session.basketMessageIds = [msg.message_id];
+    }
+
+    bot.callbackQuery(["order_start", "order_categories"], async (ctx) => {
         await ctx.answerCallbackQuery();
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!member || !hasManagerPermission(member)) {
@@ -41,18 +71,60 @@ export function orderController(bot: Bot<MyContext>) {
             await ctx.reply("Boss/admin uchun buyurtma berish keyingi bosqichda qo'shiladi.");
             return;
         }
-        const products = await productService.getActiveProductsByBranch(member.branchId);
-        if (products.length === 0) {
-            await ctx.reply("Bu filialda hali mahsulotlar yo'q.");
-            return;
-        }
-        const draft = await orderService.getOrCreateDraft(member._id, member.branchId);
-        const selected = new Set(draft.items.map(i => i.productId.toString()));
-        const view = orderPickerView(products, selected);
-        await ctx.reply(view.text, { reply_markup: view.keyboard });
+        await showCategories(ctx, member.branchId);
     });
 
-    // 3. Toggle a product
+    // 2b. A category was chosen: one photo card per product in it
+    bot.callbackQuery(/^order_cat:/, async (ctx) => {
+        await ctx.answerCallbackQuery();
+        const member = await memberService.getMemberByTelegramId(ctx.from.id);
+        if (!member || !hasManagerPermission(member) || !member.branchId) {
+            await ctx.reply("Sizda bu buyruq uchun ruxsat yo'q.");
+            return;
+        }
+        const key = ctx.callbackQuery.data.split(':')[1];
+        const isNone = key === 'NONE';
+        const cat = key as ProductCategory;
+        if (!isNone && !Object.values(ProductCategory).includes(cat)) return;
+
+        const all = await productService.getActiveProductsByBranch(member.branchId);
+        const products = all.filter(p => isNone ? !p.category : p.category === cat);
+        if (products.length === 0) {
+            await showCategories(ctx, member.branchId);
+            return;
+        }
+
+        await clearBasket(ctx); // removes the category menu
+        const draft = await orderService.getOrCreateDraft(member._id, member.branchId);
+        const selected = new Set(draft.items.map(i => i.productId.toString()));
+
+        const sentIds: number[] = [];
+        for (const p of products) {
+            const view = productCardView(p, selected.has(p._id.toString()));
+            let msg;
+            if (p.imageFileId) {
+                try {
+                    msg = await ctx.replyWithPhoto(p.imageFileId, {
+                        caption: view.text,
+                        reply_markup: view.keyboard,
+                    });
+                } catch (err) {
+                    console.error(`bad imageFileId for ${p.name}:`, err);
+                    msg = await ctx.reply(view.text, { reply_markup: view.keyboard }); // fall back to text
+                }
+            } else {
+                msg = await ctx.reply(view.text, { reply_markup: view.keyboard });
+            }
+            sentIds.push(msg.message_id);
+        }
+
+        const control = orderControlView();
+        const controlMsg = await ctx.reply(`${isNone ? '❓ Guruhsiz' : CATEGORY_LABELS[cat]}\n${control.text}`, { reply_markup: control.keyboard });
+        sentIds.push(controlMsg.message_id);
+        ctx.session.basketMessageIds = sentIds;
+    });
+
+    // 3. Toggle a product (redraws only the tapped card)
     bot.callbackQuery(/^order_toggle:/, async (ctx) => {
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!member || !hasManagerPermission(member) || !member.branchId) {
@@ -68,7 +140,8 @@ export function orderController(bot: Bot<MyContext>) {
         }
         const draft = await orderService.getOrCreateDraft(member._id, member.branchId);
         const updated = await orderService.toggleItem(draft._id, product);
-        const view = orderPickerView(products, new Set(updated.items.map(i => i.productId.toString())));
+        const isSelected = updated.items.some(i => i.productId.toString() === productId);
+        const view = productCardView(product, isSelected);
         await ctx.editMessageReplyMarkup({ reply_markup: view.keyboard });
         await ctx.answerCallbackQuery();
     });
@@ -112,7 +185,8 @@ export function orderController(bot: Bot<MyContext>) {
         }
 
         await orderService.setGroupMessageId(order._id, sent.message_id);
-        await ctx.editMessageText("✅ Buyurtma guruhga yuborildi.");
+        await clearBasket(ctx);
+        await ctx.reply("✅ Buyurtma guruhga yuborildi.");
         await ctx.answerCallbackQuery();
     });
 
@@ -122,7 +196,8 @@ export function orderController(bot: Bot<MyContext>) {
         if (member?.branchId) {
             await orderService.cancelDraftFor(member._id, member.branchId);
         }
-        await ctx.editMessageText("Bekor qilindi.");
+        await clearBasket(ctx);
+        await ctx.reply("Bekor qilindi.");
         await ctx.answerCallbackQuery();
     });
 
@@ -134,6 +209,10 @@ export function orderController(bot: Bot<MyContext>) {
             return;
         }
         const orderId = ctx.callbackQuery.data.split(':')[1];
+        if (!Types.ObjectId.isValid(orderId)) {
+            await ctx.answerCallbackQuery();
+            return;
+        }
         const order = await orderService.markOrdered(new Types.ObjectId(orderId), member._id);
         if (!order) {
             await ctx.answerCallbackQuery({ text: "Allaqachon o'zgartirilgan." });
@@ -169,7 +248,6 @@ export function orderController(bot: Bot<MyContext>) {
     });
 
     // Telegram can't move a message between topics: send a new one, delete the old one.
-    // Returns false if it could not be done, so the caller can tell the user.
     async function moveToTopic(ctx: MyContext, order: Order, topic: 'ordered' | 'arrived'): Promise<boolean> {
         const branch = await branchService.getBranchById(order.branchId);
         if (!branch?.orderGroupId || !branch.threadIds) {

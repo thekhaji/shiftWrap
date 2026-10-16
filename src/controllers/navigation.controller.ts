@@ -11,6 +11,8 @@ const MENU_BUTTONS = new Set([
     "✅ Check In",
     "🚪 Check Out",
     "📊 Hisobot",
+    "🧹 Tozalash",
+    "🧼 Tozalash hisoboti",
     "🗂 Eski hisobotlar",
     "🏢 Filial qo'shish",
     "📊 Filial hisoboti",
@@ -27,6 +29,7 @@ export function navigationController(bot: Bot<MyContext>) {
             ctx.session.pendingBranchName = undefined;
             ctx.session.editingMemberTelegramId = undefined;
             ctx.session.editingField = undefined;
+            ctx.session.cleaning = undefined;
         }
         return next();
     });

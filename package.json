@@ -23,6 +23,7 @@
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",
     "grammy": "^1.44.0",
-    "mongoose": "^9.7.3"
+    "mongoose": "^9.7.3",
+    "pptxgenjs": "^4.0.1"
   }
 }

@@ -6,6 +6,7 @@ export interface Branch {
     lat: number;
     lng: number;
     orderGroupId?: number;
+    cleaningGroupId?: number;   // group that receives the weekly cleaning slides
     threadIds?:{
         "order": number;
         "ordered": number;

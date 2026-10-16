@@ -9,6 +9,8 @@ function mainMenuKeyboard(member?: Member) {
         .row()
         .text("📊 Hisobot")
         .row()
+        .text("🧹 Tozalash")
+        .row()
         .text("🗂 Eski hisobotlar")
         .resized()
         .persistent();
@@ -26,6 +28,7 @@ function mainMenuKeyboard(member?: Member) {
     }
     else if (member && (hasManagerPermission(member))) {
         employeeKeyboard.row().text("📦 Ombor");
+        employeeKeyboard.row().text("🧼 Tozalash hisoboti");
         employeeKeyboard.row().text("📊 Filial hisoboti");
         employeeKeyboard.row().text("👥 Xodimlar ma'lumotlarini sozlash");
 

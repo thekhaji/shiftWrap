@@ -18,6 +18,9 @@ const branchSchema = new Schema(
         orderGroupId: {
             type: Number,
         },
+        cleaningGroupId: {
+            type: Number,
+        },
         threadIds: {
             order: {
                 type: Number,
