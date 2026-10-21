@@ -6,12 +6,13 @@
   "author": "thekhaji",
   "main": "dist/server.js",
   "scripts": {
+    "start:prod": "node dist/server.js",
     "start": "node -r tsconfig-paths/register -r ts-node/register src/server.ts",
     "start:dev": "nodemon --exec node -r tsconfig-paths/register -r ts-node/register src/server.ts",
     "build": "tsc",
     "migrate-products": "node -r tsconfig-paths/register -r ts-node/register src/scripts/migrateProducts.ts",
     "refresh-menus": "node -r tsconfig-paths/register -r ts-node/register src/scripts/refreshMenus.ts",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node -r ts-node/register --test src/tests/*.test.ts"
   },
   "devDependencies": {
     "@types/node": "^26.0.1",
@@ -21,6 +22,7 @@
     "typescript": "^6.0.3"
   },
   "dependencies": {
+    "@grammyjs/auto-retry": "^2.0.2",
     "@napi-rs/canvas": "^1.0.12",
     "dotenv": "^17.4.2",
     "exceljs": "^4.4.0",

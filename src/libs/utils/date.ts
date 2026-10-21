@@ -1,5 +1,12 @@
 import { nowInSeoul } from "./time";
 
+// The month that has just ended, on the Seoul clock: the one reports are submitted for.
+export function previousMonthSeoul(): { year: number; month: number } {
+    const now = nowInSeoul();
+    const current = now.getUTCMonth(); // 0-based, so this is last month's 1-based number
+    return current === 0 ? { year: now.getUTCFullYear() - 1, month: 12 } : { year: now.getUTCFullYear(), month: current };
+}
+
 // Returns the [start, end) instant boundaries for a given calendar month, expressed
 // in the "Seoul wall-clock time labeled as UTC" convention used for stored attendance dates.
 export function monthRange(year: number, month: number): { start: Date; end: Date } {

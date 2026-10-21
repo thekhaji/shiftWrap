@@ -91,6 +91,23 @@ class MemberService {
         ).lean<Member>();
     }
 
+    // accounts listed in ADMIN_TELEGRAM_IDS are always admins
+    async ensureAdmins(telegramIds: number[]): Promise<void> {
+        if (telegramIds.length === 0) return;
+        await this.memberModel.updateMany(
+            { telegramId: { $in: telegramIds }, type: { $ne: MemberType.ADMIN } },
+            { type: MemberType.ADMIN, status: MemberStatus.ACTIVE, $unset: { branchId: '' } }
+        );
+    }
+
+    // employees waiting for their branch manager; no branch = every branch
+    async getPendingMembers(branchId?: Types.ObjectId): Promise<Member[]> {
+        return this.memberModel
+            .find({ type: MemberType.USER, status: MemberStatus.PENDING, branchId: branchId ?? { $exists: true } })
+            .sort({ createdAt: 1 })
+            .lean<Member[]>();
+    }
+
     // an invited boss: no branch, no confirmation needed
     async promoteToBoss(telegramId: number): Promise<Member> {
         const member = await this.memberModel.findOneAndUpdate(

@@ -1,4 +1,4 @@
-import { Bot, InlineKeyboard, InputFile } from 'grammy';
+import { Api, Bot, InlineKeyboard, InputFile } from 'grammy';
 import { Types } from 'mongoose';
 import { MyContext } from '../server';
 import AttendanceService from '../models/Attendance.service';
@@ -12,8 +12,9 @@ import { MemberStatus, MemberType } from '../libs/enums/member.enum';
 import { allLabels, DEFAULT_LANG, monthNames, t } from '../libs/i18n';
 import { buildPlan, readEditedReport, ShiftPlan } from '../libs/utils/reportEdit';
 import { formatMoney } from '../libs/utils/payrollChart';
-import { nowInSeoul } from '../libs/utils/time';
-import { branchPickerView } from '../views/index';
+import { previousMonthSeoul } from '../libs/utils/date';
+import { approvalRequestView, branchPickerView } from '../views/index';
+import { isBossOrAdmin, isManagerOf } from '../libs/utils/permission';
 
 const attendanceService = new AttendanceService();
 const branchService = new BranchService();
@@ -23,13 +24,6 @@ const reportService = new ReportService();
 
 const MAX_FILE_BYTES = 5_000_000;
 const MAX_LISTED_CHANGES = 10;
-
-// reports are submitted for the month that has just ended
-function previousMonth(): { year: number; month: number } {
-    const now = nowInSeoul();
-    const current = now.getUTCMonth(); // 0-based, so this is last month's 1-based number
-    return current === 0 ? { year: now.getUTCFullYear() - 1, month: 12 } : { year: now.getUTCFullYear(), month: current };
-}
 
 function hours(minutes: number): string {
     return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`;
@@ -77,7 +71,7 @@ export function submissionController(bot: Bot<MyContext>) {
             await ctx.reply(t(ctx.lang, 'common.noPermission'));
             return;
         }
-        const { year, month } = previousMonth();
+        const { year, month } = previousMonthSeoul();
         const branchIds = await attendanceService.getBranchIdsForMemberAndMonth(member._id, year, month);
         if (branchIds.length === 0) {
             await ctx.reply(t(ctx.lang, 'report.noData'));
@@ -96,7 +90,7 @@ export function submissionController(bot: Bot<MyContext>) {
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!canSubmit(member)) return;
         // callback data is client-controlled: the month is recomputed and the branch must be one they worked at
-        const { year, month } = previousMonth();
+        const { year, month } = previousMonthSeoul();
         const branchId = ctx.callbackQuery.data.split(':')[1].split(',')[0];
         const branchIds = await attendanceService.getBranchIdsForMemberAndMonth(member._id, year, month);
         const chosen = branchIds.find(id => id.toString() === branchId);
@@ -204,6 +198,12 @@ export function submissionController(bot: Bot<MyContext>) {
         return lines.join('\n');
     }
 
+    // the branch's other managers; with none, bosses and admins
+    async function approversFor(branchId: Types.ObjectId, submitter: Member): Promise<Member[]> {
+        const managers = (await memberService.getManagersByBranch(branchId)).filter(m => m.telegramId !== submitter.telegramId);
+        return managers.length ? managers : await memberService.getBossesAndAdmins();
+    }
+
     async function finalize(ctx: MyContext, member: Member, plan: ShiftPlan) {
         const state = ctx.session.submitReport!;
         ctx.session.submitReport = undefined; // a second tap on the button finds nothing to submit
@@ -216,45 +216,98 @@ export function submissionController(bot: Bot<MyContext>) {
             return;
         }
 
-        await attendanceService.applyShiftPlan(member._id, branchId, plan, member.hourlyRate);
-        await payrollService.saveSubmission({
-            memberId: member._id, branchId, year, month,
-            minutesBefore: plan.minutesBefore, minutesAfter: plan.minutesAfter, changeLines: plan.changeLines,
-        });
-        await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {});
-        await ctx.reply(t(ctx.lang, 'sub.submitted'));
-
         const branch = await branchService.getBranchById(branchId);
-        await notifyApprovers(ctx, member, branch?.name ?? '', branchId, year, month, plan);
+        const branchName = branch?.name ?? '';
+        await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {});
 
-        const required = await attendanceService.getMemberIdsForBranchAndMonth(branchId, year, month);
-        if (await payrollService.markReadyIfComplete(branchId, year, month, required)) {
-            await notifyBossesReady(ctx, branch?.name ?? '', branchId, required, year, month);
+        if (plan.changeCount > 0) {
+            // edits change pay, so a manager decides; nothing is applied until then
+            const saved = await payrollService.saveSubmission({ memberId: member._id, branchId, year, month, status: 'PENDING', plan });
+            await ctx.reply(t(ctx.lang, 'sub.sentForApproval'));
+            for (const r of await approversFor(branchId, member)) {
+                const view = approvalRequestView(r.language ?? DEFAULT_LANG, {
+                    name: member.name, branch: branchName, month, year,
+                    before: hours(plan.minutesBefore), after: hours(plan.minutesAfter),
+                    lines: plan.changeLines, subId: saved._id.toString(), revision: saved.revision,
+                });
+                await ctx.api.sendMessage(r.telegramId, view.text, { reply_markup: view.keyboard })
+                    .catch((err) => console.error(`approval request to ${r.telegramId} failed:`, err));
+            }
+            return;
         }
+
+        await payrollService.saveSubmission({ memberId: member._id, branchId, year, month, status: 'APPROVED', plan });
+        await ctx.reply(t(ctx.lang, 'sub.submitted'));
+        await notifyApprovers(ctx, member, branchName, branchId, year, month, plan);
+        await checkReady(ctx.api, branchId, branchName, year, month);
     }
 
-    // the branch's other managers see who submitted and what changed; with none, bosses and admins do
+    // the report was handed in unchanged: managers just get to see it
     async function notifyApprovers(ctx: MyContext, member: Member, branchName: string, branchId: Types.ObjectId, year: number, month: number, plan: ShiftPlan) {
-        const managers = (await memberService.getManagersByBranch(branchId)).filter(m => m.telegramId !== member.telegramId);
-        const recipients = managers.length ? managers : await memberService.getBossesAndAdmins();
+        const recipients = await approversFor(branchId, member);
         const shifts = await attendanceService.getShiftsForMemberBranchAndMonth(member._id, branchId, year, month);
         const file = await reportService.generateReportFile(member, shifts, year, month);
 
         for (const r of recipients) {
             const lang = r.language ?? DEFAULT_LANG;
-            let caption = t(lang, 'sub.notice', {
+            const caption = `${t(lang, 'sub.notice', {
                 name: member.name, branch: branchName, month: monthNames(lang)[month - 1], year, hours: hours(plan.minutesAfter),
-            });
-            caption += plan.changeCount === 0
-                ? `\n${t(lang, 'sub.noChanges')}`
-                : `\n${t(lang, 'sub.changesHeader', { n: plan.changeCount, before: hours(plan.minutesBefore) })}\n${changeList(plan)}`;
-            await ctx.api.sendDocument(r.telegramId, new InputFile(file, `${member.name}_${month}_${year}.xlsx`), { caption: caption.slice(0, 1000) })
+            })}\n${t(lang, 'sub.noChanges')}`;
+            await ctx.api.sendDocument(r.telegramId, new InputFile(file, `${member.name}_${month}_${year}.xlsx`), { caption })
                 .catch((err) => console.error(`submission notice to ${r.telegramId} failed:`, err));
         }
     }
 
+    // when the last employee is approved the branch becomes ready and bosses are told, once
+    async function checkReady(api: Api, branchId: Types.ObjectId, branchName: string, year: number, month: number) {
+        const required = await attendanceService.getMemberIdsForBranchAndMonth(branchId, year, month);
+        if (await payrollService.markReadyIfComplete(branchId, year, month, required)) {
+            await notifyBossesReady(api, branchName, branchId, required, year, month);
+        }
+    }
+
+    // a manager (not the submitter), boss or admin answers an edit request
+    bot.callbackQuery(/^sub_(ok|no):/, async (ctx) => {
+        const approve = ctx.callbackQuery.data.startsWith('sub_ok:');
+        const [, subId, revision] = ctx.callbackQuery.data.split(':');
+        const actor = await memberService.getMemberByTelegramId(ctx.from.id);
+        const sub = await payrollService.getSubmissionById(subId);
+        if (!actor || !sub || !(isBossOrAdmin(actor) || isManagerOf(actor, sub.branchId.toString())) || actor._id.equals(sub.memberId)) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
+            return;
+        }
+        const decided = await payrollService.decide(sub._id, Number(revision), approve ? 'APPROVED' : 'REJECTED', actor._id);
+        if (!decided) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'reg.alreadyHandled'), show_alert: true });
+            await ctx.editMessageReplyMarkup({ reply_markup: undefined }).catch(() => {});
+            return;
+        }
+        const employee = await memberService.getMemberById(sub.memberId);
+        if (!employee) return;
+
+        if (approve) {
+            try {
+                await attendanceService.applyShiftPlan(sub.memberId, sub.branchId, sub.plan as ShiftPlan, employee.hourlyRate);
+            } catch (err) {
+                console.error("applying approved report failed:", err);
+                await payrollService.markPending(sub._id); // still waiting, the manager can press again
+                await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.errorShort'), show_alert: true });
+                return;
+            }
+        }
+        await ctx.answerCallbackQuery();
+        await ctx.editMessageText(t(ctx.lang, approve ? 'sub.approvedDone' : 'sub.rejectedDone', { name: employee.name })).catch(() => {});
+        await ctx.api.sendMessage(employee.telegramId, t(employee.language ?? DEFAULT_LANG, approve ? 'sub.approvedEmployee' : 'sub.rejectedEmployee'))
+            .catch((err) => console.error(`decision notice to ${employee.telegramId} failed:`, err));
+
+        if (approve) {
+            const branch = await branchService.getBranchById(sub.branchId);
+            await checkReady(ctx.api, sub.branchId, branch?.name ?? '', sub.year, sub.month);
+        }
+    });
+
     // every employee of the branch has submitted: bosses and admins get the payroll report
-    async function notifyBossesReady(ctx: MyContext, branchName: string, branchId: Types.ObjectId, memberIds: Types.ObjectId[], year: number, month: number) {
+    async function notifyBossesReady(api: Api, branchName: string, branchId: Types.ObjectId, memberIds: Types.ObjectId[], year: number, month: number) {
         const members = await memberService.getMembersByIds(memberIds);
         const shiftsByMember = new Map<string, Attendance[]>();
         await Promise.all(members.map(async (m) => {
@@ -268,7 +321,7 @@ export function submissionController(bot: Bot<MyContext>) {
             const caption = t(lang, 'sub.ready', {
                 branch: branchName, count: members.length, month: monthNames(lang)[month - 1], year, amount: formatMoney(total),
             });
-            await ctx.api.sendDocument(boss.telegramId, new InputFile(file, `${branchName}_${year}-${month}.xlsx`), { caption })
+            await api.sendDocument(boss.telegramId, new InputFile(file, `${branchName}_${year}-${month}.xlsx`), { caption })
                 .catch((err) => console.error(`payroll ready notice to ${boss.telegramId} failed:`, err));
         }
     }

@@ -2,6 +2,7 @@ import { Bot } from "grammy";
 import { MyContext } from "../server";
 import MemberService from "../models/Member.service";
 import BranchService from "../models/Branch.service";
+import { adminTelegramIds } from "../libs/utils/config";
 import InviteService from "../models/Invite.service";
 import { askBranch, sendPendingState } from "./registration.controller";
 import { MemberStatus, MemberType } from "../libs/enums/member.enum";
@@ -87,14 +88,15 @@ export function memberController(bot: Bot<MyContext>) {
             return;
         }
 
+        const configuredAdmin = adminTelegramIds().includes(ctx.from.id);
         const memberInput: MemberInput = {
             telegramId: ctx.from.id,
             name: [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(" "),
             username: ctx.from.username,
             phone: ctx.message.contact.phone_number,
             language: ctx.session.lang ?? ctx.lang,
-            type: inviteToken ? MemberType.BOSS : MemberType.USER,
-            status: inviteToken ? MemberStatus.ACTIVE : MemberStatus.PENDING,
+            type: configuredAdmin ? MemberType.ADMIN : inviteToken ? MemberType.BOSS : MemberType.USER,
+            status: configuredAdmin || inviteToken ? MemberStatus.ACTIVE : MemberStatus.PENDING,
         };
 
         // createMember throws rather than returning a failure value, so this needs try/catch.
