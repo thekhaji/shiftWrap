@@ -5,6 +5,7 @@ import Errors, { Message, HttpCode } from '../libs/Errors';
 import { Types } from 'mongoose';
 import { nowInSeoul } from '../libs/utils/time';
 import { monthRange } from '../libs/utils/date';
+import { ShiftPlan } from '../libs/utils/reportEdit';
 
 const MAX_SHIFT_HOURS = 20;
 
@@ -130,6 +131,24 @@ class AttendanceService {
         const months = new Array<number>(12).fill(0);
         for (const r of rows) months[r._id - 1] = Math.round(r.total);
         return months;
+    }
+
+    // Applies an employee's confirmed edits. Every write is scoped to this member and branch.
+    async applyShiftPlan(memberId: Types.ObjectId, branchId: Types.ObjectId, plan: ShiftPlan, hourlyRate?: number): Promise<void> {
+        for (const id of plan.deletes) {
+            await this.attendanceModel.deleteOne({ _id: id, memberId, branchId });
+        }
+        for (const u of plan.updates) {
+            await this.attendanceModel.updateOne(
+                { _id: u.id, memberId, branchId },
+                { $set: { checkIn: u.checkIn, ...(u.checkOut ? { checkOut: u.checkOut } : {}) } }
+            );
+        }
+        if (plan.creates.length > 0 && hourlyRate) {
+            await this.attendanceModel.insertMany(
+                plan.creates.map(c => ({ memberId, branchId, checkIn: c.checkIn, checkOut: c.checkOut, hourlyRate }))
+            );
+        }
     }
 
     // Earliest shift on record for a member — bounds how far back the "old reports" month picker goes.

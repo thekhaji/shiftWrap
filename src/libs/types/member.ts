@@ -33,6 +33,7 @@ export interface MemberInput {
 // (which shapes self-registration) so a member can never submit these about themselves.
 export interface MemberManagerUpdate {
     type?: MemberType;
+    status?: MemberStatus;
     name?: string;
     phone?: string;
     branchId?: Types.ObjectId;

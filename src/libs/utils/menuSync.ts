@@ -24,7 +24,7 @@ export function startMenuSync(bot: Bot<MyContext>) {
 
     stream.on('change', async (change: any) => {
         const member = change.fullDocument as Member | undefined;
-        if (!member) return;
+        if (!member || member.status === 'PENDING') return;
         const lang = member.language ?? DEFAULT_LANG;
         const view = mainMenuView(member);
         await bot.api.sendMessage(

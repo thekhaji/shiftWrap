@@ -3,7 +3,7 @@ import { Member, MemberInput, MemberManagerUpdate } from '../libs/types/member';
 import Errors, { HttpCode, Message } from '../libs/Errors';
 import { Types } from 'mongoose';
 import { Lang } from '../libs/i18n';
-import { MemberType } from '../libs/enums/member.enum';
+import { MemberStatus, MemberType } from '../libs/enums/member.enum';
 
 export const MAX_MANAGERS_PER_BRANCH = 2;
 
@@ -69,7 +69,37 @@ class MemberService {
         if (!managers.some(m => m.telegramId === telegramId) && managers.length >= MAX_MANAGERS_PER_BRANCH) {
             throw new Errors(HttpCode.BAD_REQUEST, Message.MANAGER_LIMIT);
         }
-        return this.updateMember(telegramId, { type: MemberType.MANAGER, branchId });
+        return this.updateMember(telegramId, { type: MemberType.MANAGER, branchId, status: MemberStatus.ACTIVE });
+    }
+
+    // employee changed their mind or was rejected: they pick a branch again
+    async clearBranch(telegramId: number): Promise<void> {
+        await this.memberModel.updateOne({ telegramId }, { $unset: { branchId: '' } });
+    }
+
+    async getBossesAndAdmins(): Promise<Member[]> {
+        return this.memberModel.find({ type: { $in: [MemberType.BOSS, MemberType.ADMIN] } }).lean<Member[]>();
+    }
+
+    // Atomic answer to a join request: only a still-pending employee who asked for THIS branch.
+    // Confirm -> active; reject -> branch cleared so they pick again. null = already handled.
+    async resolveJoinRequest(telegramId: number, branchId: Types.ObjectId, approve: boolean): Promise<Member | null> {
+        return this.memberModel.findOneAndUpdate(
+            { telegramId, type: MemberType.USER, status: MemberStatus.PENDING, branchId },
+            approve ? { status: MemberStatus.ACTIVE } : { $unset: { branchId: '' } },
+            { new: true }
+        ).lean<Member>();
+    }
+
+    // an invited boss: no branch, no confirmation needed
+    async promoteToBoss(telegramId: number): Promise<Member> {
+        const member = await this.memberModel.findOneAndUpdate(
+            { telegramId },
+            { type: MemberType.BOSS, status: MemberStatus.ACTIVE, $unset: { branchId: '' } },
+            { new: true }
+        );
+        if (!member) throw new Errors(HttpCode.NOT_FOUND, Message.NO_DATA_FOUND);
+        return member.toObject() as Member;
     }
 
     // back to a plain employee with no branch

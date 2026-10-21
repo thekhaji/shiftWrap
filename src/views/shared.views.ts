@@ -15,6 +15,7 @@ function mainMenuKeyboard(member?: Member) {
         bossKeyboard.text(t(lang, 'menu.payroll')).row();
         if (member.type === "BOSS") bossKeyboard.text(t(lang, 'menu.assignManager')).row();
         if (member.type === "ADMIN") {
+            bossKeyboard.text(t(lang, 'menu.inviteBoss')).row();
             bossKeyboard.text(t(lang, 'menu.addProduct')).row();
             bossKeyboard.text(t(lang, 'menu.branchSettings')).row();
         }
@@ -26,6 +27,7 @@ function mainMenuKeyboard(member?: Member) {
         .text(t(lang, 'menu.checkOut'))
         .row()
         .text(t(lang, 'menu.report'))
+        .text(t(lang, 'menu.submitReport'))
         .row()
         .text(t(lang, 'menu.cleaning'))
         .row()

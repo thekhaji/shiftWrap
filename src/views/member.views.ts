@@ -62,3 +62,23 @@ export function askEditFieldDetailView(lang: Lang, userName: string, field: stri
             .oneTime(),
     };
 }
+
+export function branchChoiceView(lang: Lang, branches: { _id: { toString(): string }; name: string }[]) {
+    const keyboard = new InlineKeyboard();
+    for (const branch of branches) keyboard.text(branch.name, `reg_branch:${branch._id.toString()}`).row();
+    return { text: t(lang, 'reg.askBranch'), keyboard };
+}
+
+// shown to an employee while the branch manager has not answered yet
+export function pendingView(lang: Lang, branchName: string) {
+    const keyboard = new InlineKeyboard().text(t(lang, 'reg.changeBranch'), 'reg_change');
+    return { text: t(lang, 'reg.pending', { branch: branchName }), keyboard };
+}
+
+// sent to the branch manager(s)
+export function joinRequestView(lang: Lang, member: Member, branchName: string, branchId: string) {
+    const keyboard = new InlineKeyboard()
+        .text(t(lang, 'reg.btnConfirm'), `reg_ok:${member.telegramId}:${branchId}`)
+        .text(t(lang, 'reg.btnReject'), `reg_no:${member.telegramId}:${branchId}`);
+    return { text: t(lang, 'reg.approveAsk', { name: member.name, phone: member.phone, branch: branchName }), keyboard };
+}

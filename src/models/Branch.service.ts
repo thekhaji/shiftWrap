@@ -40,6 +40,23 @@ class BranchService {
         return updatedBranch ? (updatedBranch.toObject() as Branch) : null;
     }
 
+    // order group + the 3 topics its messages move through
+    async setOrderGroup(branchId: Types.ObjectId, chatId: number, threadIds: NonNullable<Branch['threadIds']>): Promise<void> {
+        await this.branchModel.updateOne({ _id: branchId }, { $set: { orderGroupId: chatId, threadIds } });
+    }
+
+    async clearOrderGroup(branchId: Types.ObjectId): Promise<void> {
+        await this.branchModel.updateOne({ _id: branchId }, { $unset: { orderGroupId: '', threadIds: '' } });
+    }
+
+    async setCleaningGroup(branchId: Types.ObjectId, chatId: number): Promise<void> {
+        await this.branchModel.updateOne({ _id: branchId }, { $set: { cleaningGroupId: chatId } });
+    }
+
+    async clearCleaningGroup(branchId: Types.ObjectId): Promise<void> {
+        await this.branchModel.updateOne({ _id: branchId }, { $unset: { cleaningGroupId: '' } });
+    }
+
     // grant or revoke one product for a branch storage
     async setProductAccess(branchId: Types.ObjectId, productId: Types.ObjectId, granted: boolean): Promise<Branch | null> {
         const update = granted ? { $addToSet: { productIds: productId } } : { $pull: { productIds: productId } };

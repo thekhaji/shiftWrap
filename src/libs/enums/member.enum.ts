@@ -6,6 +6,7 @@ export enum MemberType{
 }
 
 export enum MemberStatus{
+    PENDING = 'PENDING',   // registered, waiting for the branch manager to confirm
     ACTIVE = 'ACTIVE',
     BLOCK = 'BLOCK',
     INACTIVE = 'INACTIVE'

@@ -20,6 +20,7 @@ export function navigationController(bot: Bot<MyContext>) {
             ctx.session.editingMemberTelegramId = undefined;
             ctx.session.editingField = undefined;
             ctx.session.cleaning = undefined;
+            ctx.session.submitReport = undefined;
         }
         return next();
     });

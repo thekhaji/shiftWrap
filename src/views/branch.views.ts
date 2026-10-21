@@ -91,6 +91,7 @@ export function branchSettingsMenuView(lang: Lang, branch: Branch) {
     const keyboard = new InlineKeyboard()
         .text(t(lang, 'bs.products'), `bs_p:${id}:0`).row()
         .text(t(lang, 'bs.managers'), `bs_m:${id}`).row()
+        .text(t(lang, 'bs.groups'), `bs_g:${id}`).row()
         .text(t(lang, 'bs.back'), 'bs_back');
     return { text: `${t(lang, 'bs.branchTitle', { branch: branch.name })}\n${t(lang, 'bs.menuText')}`, keyboard };
 }
@@ -114,4 +115,33 @@ export function settingsCandidatePickerView(lang: Lang, branch: Branch, candidat
     for (const user of candidates) keyboard.text(user.name, `bs_mu:${branch._id.toString()}:${user.telegramId}`).row();
     keyboard.text(t(lang, 'bs.backShort'), `bs_m:${branch._id.toString()}`);
     return { text: t(lang, 'mgr.pickUser', { branch: branch.name }), keyboard };
+}
+
+export type GroupKind = 'o' | 'c';   // order / cleaning
+
+// both groups and whether each is assigned
+export function branchGroupsView(lang: Lang, branch: Branch, names: { order?: string; cleaning?: string }) {
+    const id = branch._id.toString();
+    const none = t(lang, 'bs.groupNone');
+    const keyboard = new InlineKeyboard()
+        .text(t(lang, 'bs.orderGroup'), `bs_gk:${id}:o`).row()
+        .text(t(lang, 'bs.cleaningGroup'), `bs_gk:${id}:c`).row()
+        .text(t(lang, 'bs.backShort'), `bs_b:${id}`);
+    return {
+        text: t(lang, 'bs.groupsTitle', { branch: branch.name, order: names.order ?? none, cleaning: names.cleaning ?? none }),
+        keyboard,
+    };
+}
+
+// one group kind: current group (or "not assigned"), remove button, and the groups the bot is admin in
+export function branchGroupPickerView(lang: Lang, branch: Branch, kind: GroupKind, current: string | undefined, groups: { chatId: number; title: string }[]) {
+    const id = branch._id.toString();
+    const keyboard = new InlineKeyboard();
+    if (current) keyboard.text(t(lang, 'bs.groupRemove'), `bs_gr:${id}:${kind}`).row();
+    for (const g of groups) keyboard.text(g.title, `bs_gs:${id}:${kind}:${g.chatId}`).row();
+    keyboard.text(t(lang, 'bs.groupRefresh'), `bs_gk:${id}:${kind}`).row();
+    keyboard.text(t(lang, 'bs.backShort'), `bs_g:${id}`);
+    const kindName = t(lang, kind === 'o' ? 'bs.orderGroup' : 'bs.cleaningGroup');
+    const header = t(lang, 'bs.groupTitle', { kind: kindName, branch: branch.name, current: current ?? t(lang, 'bs.groupNone') });
+    return { text: `${header}\n\n${t(lang, groups.length ? 'bs.groupPick' : 'bs.groupNoList')}`, keyboard };
 }

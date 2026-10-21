@@ -2,8 +2,9 @@ import { Bot } from 'grammy';
 import { MyContext } from '../server';
 import BranchService from '../models/Branch.service';
 import MemberService from '../models/Member.service';
+import GroupService from '../models/Group.service';
 import ProductService from '../models/Product.service';
-import { askBranchNameView, askLocationView, branchManagersView, branchProductAccessView, branchSettingsMenuView, settingsCandidatePickerView, branchRegisteredView, mainMenuView, managerBranchPickerView, managerCandidatePickerView, settingsBranchPickerView } from '../views/index';
+import { askBranchNameView, askLocationView, branchGroupPickerView, branchGroupsView, branchManagersView, GroupKind, branchProductAccessView, branchSettingsMenuView, settingsCandidatePickerView, branchRegisteredView, mainMenuView, managerBranchPickerView, managerCandidatePickerView, settingsBranchPickerView } from '../views/index';
 import Errors, { Message } from '../libs/Errors';
 import { MAX_MANAGERS_PER_BRANCH } from '../models/Member.service';
 import { Branch } from '../libs/types/branch';
@@ -15,6 +16,7 @@ import { allLabels, errorText, t } from '../libs/i18n';
 const branchService = new BranchService();
 const memberService = new MemberService();
 const productService = new ProductService();
+const groupService = new GroupService();
 
 async function answerError(ctx: MyContext, err: unknown) {
     if (err instanceof Errors) {
@@ -338,6 +340,114 @@ export function branchController(bot: Bot<MyContext>) {
             return;
         }
         await showManagers(ctx, branch);
+    });
+
+    // ---- order / cleaning groups (admin only) ----
+
+    async function groupNames(branch: Branch) {
+        const ids = [branch.orderGroupId, branch.cleaningGroupId].filter((id): id is number => id !== undefined);
+        const titles = await groupService.getTitles(ids);
+        const name = (id?: number) => (id === undefined ? undefined : titles.get(id) ?? `ID ${id}`);
+        return { order: name(branch.orderGroupId), cleaning: name(branch.cleaningGroupId) };
+    }
+
+    async function showGroups(ctx: MyContext, branchId: string, toast?: string) {
+        const branch = await adminBranch(ctx, branchId);
+        if (!branch) return;
+        await ctx.answerCallbackQuery(toast ? { text: toast } : undefined);
+        const view = branchGroupsView(ctx.lang, branch, await groupNames(branch));
+        await ctx.editMessageText(view.text, { reply_markup: view.keyboard }).catch(() => {});
+    }
+
+    // groups where the bot is currently an admin (membership can change any time, so ask Telegram)
+    async function adminGroups(ctx: MyContext) {
+        const result: { chatId: number; title: string }[] = [];
+        for (const g of await groupService.getAll()) {
+            try {
+                const me = await ctx.api.getChatMember(g.chatId, ctx.me.id);
+                if (me.status === 'administrator' || me.status === 'creator') result.push(g);
+                else if (me.status === 'left' || me.status === 'kicked') await groupService.forget(g.chatId);
+            } catch {
+                await groupService.forget(g.chatId); // chat is gone or unreachable
+            }
+        }
+        return result;
+    }
+
+    async function showGroupPicker(ctx: MyContext, branchId: string, kind: GroupKind, toast?: string) {
+        const branch = await adminBranch(ctx, branchId);
+        if (!branch) return;
+        await ctx.answerCallbackQuery(toast ? { text: toast } : undefined);
+        const names = await groupNames(branch);
+        let groups = await adminGroups(ctx);
+        if (kind === 'o') {
+            // an order group has its own topics, so one group can't serve two branches
+            const used = new Set((await branchService.getAllBranches())
+                .filter(b => b._id.toString() !== branchId && b.orderGroupId !== undefined)
+                .map(b => b.orderGroupId));
+            groups = groups.filter(g => !used.has(g.chatId));
+        }
+        const view = branchGroupPickerView(ctx.lang, branch, kind, kind === 'o' ? names.order : names.cleaning, groups);
+        await ctx.editMessageText(view.text, { reply_markup: view.keyboard }).catch(() => {});
+    }
+
+    bot.callbackQuery(/^bs_g:/, async (ctx) => {
+        await showGroups(ctx, ctx.callbackQuery.data.split(":")[1]);
+    });
+
+    bot.callbackQuery(/^bs_gk:/, async (ctx) => {
+        const [, branchId, kind] = ctx.callbackQuery.data.split(":");
+        if (kind !== 'o' && kind !== 'c') return;
+        await showGroupPicker(ctx, branchId, kind);
+    });
+
+    bot.callbackQuery(/^bs_gr:/, async (ctx) => {
+        const [, branchId, kind] = ctx.callbackQuery.data.split(":");
+        if (kind !== 'o' && kind !== 'c') return;
+        const branch = await adminBranch(ctx, branchId);
+        if (!branch) return;
+        if (kind === 'o') await branchService.clearOrderGroup(branch._id);
+        else await branchService.clearCleaningGroup(branch._id);
+        await showGroupPicker(ctx, branchId, kind, t(ctx.lang, 'bs.groupRemoved'));
+    });
+
+    bot.callbackQuery(/^bs_gs:/, async (ctx) => {
+        const [, branchId, kind, chatIdText] = ctx.callbackQuery.data.split(":");
+        if (kind !== 'o' && kind !== 'c') return;
+        const branch = await adminBranch(ctx, branchId);
+        if (!branch) return;
+        const chatId = Number(chatIdText);
+        // only groups the bot is really an admin in can be picked
+        if (!(await adminGroups(ctx)).some(g => g.chatId === chatId)) {
+            await showGroupPicker(ctx, branchId, kind);
+            return;
+        }
+
+        if (kind === 'c') {
+            await branchService.setCleaningGroup(branch._id, chatId);
+        } else {
+            // the order messages move between three topics; create them in the group
+            const chat = await ctx.api.getChat(chatId);
+            if (!('is_forum' in chat) || !chat.is_forum) {
+                await ctx.answerCallbackQuery({ text: t(ctx.lang, 'bs.groupNotForum'), show_alert: true });
+                return;
+            }
+            try {
+                const order = await ctx.api.createForumTopic(chatId, t(ctx.lang, 'bs.topic0'));
+                const ordered = await ctx.api.createForumTopic(chatId, t(ctx.lang, 'bs.topic1'));
+                const arrived = await ctx.api.createForumTopic(chatId, t(ctx.lang, 'bs.topic2'));
+                await branchService.setOrderGroup(branch._id, chatId, {
+                    order: order.message_thread_id,
+                    ordered: ordered.message_thread_id,
+                    arrived: arrived.message_thread_id,
+                });
+            } catch (err) {
+                console.error("create order topics failed:", err);
+                await ctx.answerCallbackQuery({ text: t(ctx.lang, 'bs.groupTopicsFailed'), show_alert: true });
+                return;
+            }
+        }
+        await showGroupPicker(ctx, branchId, kind, t(ctx.lang, 'bs.groupAssigned'));
     });
 
     bot.callbackQuery("bs_noop", (ctx) => ctx.answerCallbackQuery());

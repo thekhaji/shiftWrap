@@ -17,6 +17,10 @@ import { Lang, DEFAULT_LANG } from './libs/i18n';
 import MemberService from './models/Member.service';
 import { languageController } from './controllers/language.controller';
 import { startMenuSync } from './libs/utils/menuSync';
+import { registrationController } from './controllers/registration.controller';
+import { submissionController } from './controllers/submission.controller';
+import { ShiftPlan } from './libs/utils/reportEdit';
+import { groupController } from './controllers/group.controller';
 import { cleaningController } from './controllers/cleaning.controller';
 
 export interface SessionData {
@@ -39,6 +43,8 @@ export interface SessionData {
         photos?: { messageId: number; fileId: string }[];   // album photos so far (needs 2: before, after)
     };
     lastCleaningAlbumId?: string;  // saved album; its leftover photos are ignored
+    bossInvite?: string;           // valid invite token, carried from /start until the phone is shared
+    submitReport?: { branchId: string; year: number; month: number; plan?: ShiftPlan };  // report being checked before submit
     lang?: Lang;                   // chosen before registration finishes
     basketMessageIds?: number[];   // message ids of the catalog, so they can be deleted later
 }
@@ -57,6 +63,8 @@ mongoose.connect(process.env.MONGO_URL as string)
         ctx.lang = member?.language ?? ctx.session.lang ?? DEFAULT_LANG;
         await next();
     });
+    groupController(bot);
+    registrationController(bot); // first: blocks unconfirmed employees from everything else
     navigationController(bot);
     languageController(bot); // first: its middleware resets pending prompts on menu taps
     memberController(bot);
@@ -67,6 +75,7 @@ mongoose.connect(process.env.MONGO_URL as string)
     orderController(bot);
     productController(bot);
     cleaningController(bot);
+    submissionController(bot);
     startMenuSync(bot);
     bot.start();
 })
