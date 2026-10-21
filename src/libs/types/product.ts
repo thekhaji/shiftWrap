@@ -3,7 +3,6 @@ import { ProductCategory } from "../enums/product.enum";
 
 export interface Product {
     _id: Types.ObjectId;
-    branchId: Types.ObjectId;
     name: string;
     imageFileId?: string;   // Telegram file_id, not the image itself
     category: ProductCategory;
@@ -17,5 +16,5 @@ export interface Product {
 
 export type ProductInput = Pick <
     Product,
-    "branchId" | "name" | "category" | "imageFileId" | "code" | "orderLink" | "orderNote"
+    "name" | "category" | "imageFileId" | "code" | "orderLink" | "orderNote"
 >;

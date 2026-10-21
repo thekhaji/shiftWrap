@@ -3,6 +3,7 @@ export enum CleaningPlace {
     KITCHEN = 'KITCHEN',
     PREP = 'PREP',
     OFFICE = 'OFFICE',
+    HOME = 'HOME',
 }
 
 // plain text for slides/captions (no emoji)
@@ -11,6 +12,7 @@ export const CLEANING_PLACE_NAMES: Record<CleaningPlace, string> = {
     KITCHEN: 'Oshxona',
     PREP: 'Tayyorlov hududi',
     OFFICE: 'Ofis',
+    HOME: 'Uy',
 };
 
 // used in the Turkish message that goes to the group
@@ -19,4 +21,5 @@ export const CLEANING_PLACE_NAMES_TR: Record<CleaningPlace, string> = {
     KITCHEN: 'Mutfak',
     PREP: 'Hazırlık alanı',
     OFFICE: 'Ofis',
+    HOME: 'Ev',
 };

@@ -40,6 +40,13 @@ class BranchService {
         return updatedBranch ? (updatedBranch.toObject() as Branch) : null;
     }
 
+    // grant or revoke one product for a branch storage
+    async setProductAccess(branchId: Types.ObjectId, productId: Types.ObjectId, granted: boolean): Promise<Branch | null> {
+        const update = granted ? { $addToSet: { productIds: productId } } : { $pull: { productIds: productId } };
+        const branch = await this.branchModel.findByIdAndUpdate(branchId, update, { new: true });
+        return branch ? (branch.toObject() as Branch) : null;
+    }
+
     async deleteBranch(branchId: string): Promise<Branch | null> {
         const deletedBranch = await this.branchModel.findByIdAndDelete(branchId);
         return deletedBranch ? (deletedBranch.toObject() as Branch) : null;

@@ -18,6 +18,7 @@ const branchSchema = new Schema(
         orderGroupId: {
             type: Number,
         },
+        productIds: [{ type: Schema.Types.ObjectId, ref: 'Product' }],
         cleaningGroupId: {
             type: Number,
         },

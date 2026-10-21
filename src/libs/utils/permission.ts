@@ -13,3 +13,8 @@ export function isManagerOf(member: Member, branchId: string): boolean {
 export function isBossOrAdmin(member: Member): boolean {
     return member.type === MemberType.BOSS || member.type === MemberType.ADMIN;
 }
+
+// only admins manage the product catalog and branch storage access
+export function isAdmin(member: Member): boolean {
+    return member.type === MemberType.ADMIN;
+}

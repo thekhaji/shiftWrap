@@ -27,7 +27,6 @@ export interface SessionData {
     editingField?: EditableMemberField;
     addProduct?: {
         step: 'name' | 'category' | 'photo' | 'link' | 'note';
-        branchId: string;           // ObjectId stored as a string
         name?: string;
         category?: ProductCategory;
         imageFileId?: string;

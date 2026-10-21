@@ -1,16 +1,13 @@
-import { Bot, InlineKeyboard } from 'grammy';
-import { Types } from 'mongoose';
+import { Bot } from 'grammy';
 import { MyContext } from '../server';
 import MemberService from '../models/Member.service';
-import BranchService from '../models/Branch.service';
 import ProductService from '../models/Product.service';
 import { ProductCategory } from '../libs/enums/product.enum';
-import { hasManagerPermission, isBossOrAdmin } from '../libs/utils/permission';
+import { isAdmin } from '../libs/utils/permission';
 import { productStepView, productCategoryView } from '../views/index';
 import { allLabels, allMenuLabels, t } from '../libs/i18n';
 
 const memberService = new MemberService();
-const branchService = new BranchService();
 const productService = new ProductService();
 
 // tapping a main-menu button cancels an unfinished add-product flow
@@ -45,7 +42,6 @@ export function productController(bot: Bot<MyContext>) {
         }
         try {
             await productService.createProduct({
-                branchId: new Types.ObjectId(w.branchId),
                 name: w.name,
                 category: w.category,
                 imageFileId: w.imageFileId,
@@ -60,33 +56,15 @@ export function productController(bot: Bot<MyContext>) {
         ctx.session.addProduct = undefined;
     }
 
-    // start: managers use their own branch, boss/admin pick one
-    bot.callbackQuery("product_add", async (ctx) => {
+    // start: admin only, the product goes into the shared catalog
+    bot.hears(allLabels('menu.addProduct'), async (ctx) => {
+        if (!ctx.from) return;
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
-        if (!member || !hasManagerPermission(member)) {
-            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
+        if (!member || !isAdmin(member)) {
+            await ctx.reply(t(ctx.lang, 'common.noPermission'));
             return;
         }
-        await ctx.answerCallbackQuery();
-        if (isBossOrAdmin(member)) {
-            const branches = await branchService.getAllBranches();
-            const keyboard = new InlineKeyboard();
-            for (const b of branches) keyboard.text(b.name, `product_branch:${b._id.toString()}`).row();
-            await ctx.reply(t(ctx.lang, 'product.pickBranch'), { reply_markup: keyboard });
-            return;
-        }
-        ctx.session.addProduct = { step: 'name', branchId: member.branchId!.toString() };
-        await askStep(ctx, 'name');
-    });
-
-    bot.callbackQuery(/^product_branch:/, async (ctx) => {
-        const member = await memberService.getMemberByTelegramId(ctx.from.id);
-        if (!member || !isBossOrAdmin(member)) {
-            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
-            return;
-        }
-        await ctx.answerCallbackQuery();
-        ctx.session.addProduct = { step: 'name', branchId: ctx.callbackQuery.data.split(':')[1] };
+        ctx.session.addProduct = { step: 'name' };
         await askStep(ctx, 'name');
     });
 

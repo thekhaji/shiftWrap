@@ -4,7 +4,6 @@ import { ProductCategory } from '../libs/enums/product.enum';
 
 const productSchema = new Schema<Product>(
     {
-        branchId: { type: Schema.Types.ObjectId, ref: 'Branch', required: true },
         name: { type: String, required: true, trim: true },
         imageFileId: { type: String },
         category: { type: String, enum: Object.values(ProductCategory), required: true },
@@ -16,7 +15,7 @@ const productSchema = new Schema<Product>(
     { timestamps: true }
 );
 
-// A branch can't list the same product name twice; different branches may share names.
-productSchema.index({ branchId: 1, name: 1 }, { unique: true });
+// the catalog is shared by all branches, so a name is unique globally
+productSchema.index({ name: 1 }, { unique: true });
 
 export default mongoose.model<Product>('Product', productSchema);

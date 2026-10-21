@@ -7,16 +7,17 @@ function mainMenuKeyboard(member?: Member) {
     const lang = member?.language ?? DEFAULT_LANG;
 
     if (member?.type === "BOSS" || member?.type === "ADMIN") {
-        return new Keyboard()
+        const bossKeyboard = new Keyboard()
             .text(t(lang, 'menu.addBranch'))
             .row()
-            .text(t(lang, 'menu.assignManager'))
-            .row()
             .text(t(lang, 'menu.branchReport'))
-            .row()
-            .text(t(lang, 'menu.language'))
-            .resized()
-            .persistent();
+            .row();
+        if (member.type === "BOSS") bossKeyboard.text(t(lang, 'menu.assignManager')).row();
+        if (member.type === "ADMIN") {
+            bossKeyboard.text(t(lang, 'menu.addProduct')).row();
+            bossKeyboard.text(t(lang, 'menu.branchSettings')).row();
+        }
+        return bossKeyboard.text(t(lang, 'menu.language')).resized().persistent();
     }
 
     const employeeKeyboard = new Keyboard()

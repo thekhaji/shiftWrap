@@ -9,6 +9,7 @@
     "start": "node -r tsconfig-paths/register -r ts-node/register src/server.ts",
     "start:dev": "nodemon --exec node -r tsconfig-paths/register -r ts-node/register src/server.ts",
     "build": "tsc",
+    "migrate-products": "node -r tsconfig-paths/register -r ts-node/register src/scripts/migrateProducts.ts",
     "refresh-menus": "node -r tsconfig-paths/register -r ts-node/register src/scripts/refreshMenus.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },

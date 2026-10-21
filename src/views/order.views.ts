@@ -6,9 +6,7 @@ import { ProductCategory } from '../libs/enums/product.enum';
 import { Lang, t } from '../libs/i18n';
 
 export function storageMenuView(lang: Lang) {
-    const keyboard = new InlineKeyboard()
-        .text(t(lang, 'storage.order'), "order_start").row()
-        .text(t(lang, 'storage.addProduct'), "product_add");
+    const keyboard = new InlineKeyboard().text(t(lang, 'storage.order'), "order_start");
     return { text: t(lang, 'storage.title'), keyboard };
 }
 
