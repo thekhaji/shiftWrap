@@ -15,6 +15,7 @@ export const uz = {
     'menu.employees': "👥 Xodimlar ma'lumotlarini sozlash",
     'menu.addProduct': "➕ Mahsulot qo'shish",
     'menu.branchSettings': '⚙️ Filial sozlamalari',
+    'menu.payroll': "💰 To'lovlar",
     'menu.home': '🔙 Bosh menyu',
 
     // ---- common ----
@@ -85,6 +86,11 @@ export const uz = {
     'report.noHistory': "Sizda hali hech qanday hisobot yo'q.",
     'report.noPast': "Hali o'tgan oylar uchun hisobot mavjud emas.",
     'report.pickBranch': 'Qaysi filial uchun {month}/{year} hisobot kerak?',
+    'payroll.pickScope': "Qaysi filial uchun?",
+    'payroll.allBranches': "🏢 Barcha filiallar",
+    'payroll.caption': "💰 {scope}\n{month} {year}: xodimlarga to'langan jami summa — {amount}",
+    'payroll.thisMonth': "Shu oy to'langan",
+    'payroll.yearTitle': "{year}-yil bo'yicha oylik to'lovlar",
     'months': 'Yanvar,Fevral,Mart,Aprel,May,Iyun,Iyul,Avgust,Sentyabr,Oktyabr,Noyabr,Dekabr',
 
     // ---- branches / managers ----

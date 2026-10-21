@@ -107,6 +107,31 @@ class AttendanceService {
         });
     }
 
+    // Money paid per month of `year` (index 0 = January): closed shifts only, at the rate
+    // snapshotted on each shift. Months use the same Seoul-as-UTC convention as the reports.
+    async getMonthlyPayroll(year: number, branchId?: Types.ObjectId): Promise<number[]> {
+        const { start } = monthRange(year, 1);
+        const { end } = monthRange(year, 12);
+        const rows = await this.attendanceModel.aggregate([
+            {
+                $match: {
+                    ...(branchId ? { branchId } : {}),
+                    checkIn: { $gte: start, $lt: end },
+                    checkOut: { $type: 'date' },
+                },
+            },
+            {
+                $group: {
+                    _id: { $month: '$checkIn' },
+                    total: { $sum: { $multiply: [{ $divide: [{ $subtract: ['$checkOut', '$checkIn'] }, 3600000] }, '$hourlyRate'] } },
+                },
+            },
+        ]);
+        const months = new Array<number>(12).fill(0);
+        for (const r of rows) months[r._id - 1] = Math.round(r.total);
+        return months;
+    }
+
     // Earliest shift on record for a member — bounds how far back the "old reports" month picker goes.
     async getFirstCheckInDate(memberId: Types.ObjectId): Promise<Date | null> {
         const earliest = await this.attendanceModel

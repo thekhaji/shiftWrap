@@ -15,6 +15,7 @@ export const tr: Record<TranslationKey, string> = {
     'menu.employees': '👥 Çalışan bilgilerini düzenle',
     'menu.addProduct': '➕ Ürün ekle',
     'menu.branchSettings': '⚙️ Şube ayarları',
+    'menu.payroll': "💰 Ödemeler",
     'menu.home': '🔙 Ana menü',
 
     'common.welcome': 'Hoş geldiniz, {name}! 👋\nLütfen bir işlem seçin:',
@@ -78,6 +79,11 @@ export const tr: Record<TranslationKey, string> = {
     'report.noHistory': 'Henüz hiç raporunuz yok.',
     'report.noPast': 'Geçmiş aylar için henüz rapor yok.',
     'report.pickBranch': 'Hangi şube için {month}/{year} raporu gerekiyor?',
+    'payroll.pickScope': "Hangi şube için?",
+    'payroll.allBranches': "🏢 Tüm şubeler",
+    'payroll.caption': "💰 {scope}\n{month} {year}: çalışanlara ödenen toplam tutar — {amount}",
+    'payroll.thisMonth': "Bu ay ödenen",
+    'payroll.yearTitle': "{year} yılı aylık ödemeler",
     'months': 'Ocak,Şubat,Mart,Nisan,Mayıs,Haziran,Temmuz,Ağustos,Eylül,Ekim,Kasım,Aralık',
 
     'branch.askName': 'Yeni şubenin adını girin ✍️',

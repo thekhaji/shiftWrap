@@ -6,7 +6,10 @@ import MemberService from '../models/Member.service';
 import ReportService from '../models/Report.service';
 import BranchService from '../models/Branch.service';
 import { isBossOrAdmin, hasManagerPermission, isManagerOf } from '../libs/utils/permission';
-import { branchPickerView, monthPickerView } from '../views/index';
+import { branchPickerView, monthPickerView, payrollScopePickerView } from '../views/index';
+import { formatMoney, renderPayrollChart } from '../libs/utils/payrollChart';
+import { nowInSeoul } from '../libs/utils/time';
+import { monthNames } from '../libs/i18n';
 import { Attendance } from '../libs/types/attendance';
 import { getMonthsBetween } from '../libs/utils/date';
 import { allLabels, t } from '../libs/i18n';
@@ -41,7 +44,68 @@ async function sendBranchReport(ctx: MyContext, branchId: Types.ObjectId, year: 
     await ctx.replyWithDocument(new InputFile(buffer, `${branch.name}_${year}-${month}.xlsx`));
 }
 
+// branchId undefined = all branches
+async function sendPayroll(ctx: MyContext, branchId?: Types.ObjectId) {
+    let scopeName = t(ctx.lang, 'payroll.allBranches').replace(/^\S+\s/, '');
+    if (branchId) {
+        const branch = await branchService.getBranchById(branchId);
+        if (!branch) {
+            await ctx.reply(t(ctx.lang, 'common.branchNotFound'));
+            return;
+        }
+        scopeName = branch.name;
+    }
+
+    const now = nowInSeoul(); // shifts are stored on the Seoul clock
+    const year = now.getUTCFullYear();
+    const month = now.getUTCMonth() + 1;
+    const amounts = await attendanceService.getMonthlyPayroll(year, branchId);
+    const names = monthNames(ctx.lang);
+
+    const image = renderPayrollChart({
+        scopeName,
+        monthLabels: names.map(n => n.slice(0, 3)),
+        amounts,
+        currentMonth: month,
+        labels: { thisMonth: t(ctx.lang, 'payroll.thisMonth'), title: t(ctx.lang, 'payroll.yearTitle', { year }) },
+    });
+    await ctx.replyWithPhoto(new InputFile(image, `payroll_${year}.png`), {
+        caption: t(ctx.lang, 'payroll.caption', { scope: scopeName, month: names[month - 1], year, amount: formatMoney(amounts[month - 1]) }),
+    });
+}
+
 export function reportController(bot: Bot<MyContext>) {
+    bot.hears(allLabels('menu.payroll'), async (ctx) => {
+        if (!ctx.from) return;
+        const member = await memberService.getMemberByTelegramId(ctx.from.id);
+        if (!member) return;
+
+        if (hasManagerPermission(member)) {
+            await sendPayroll(ctx, member.branchId!);
+        } else if (isBossOrAdmin(member)) {
+            const view = payrollScopePickerView(ctx.lang, await branchService.getAllBranches());
+            await ctx.reply(view.text, { reply_markup: view.keyboard });
+        } else {
+            await ctx.reply(t(ctx.lang, 'common.noPermission'));
+        }
+    });
+
+    bot.callbackQuery(/^payroll:/, async (ctx) => {
+        await ctx.answerCallbackQuery();
+        const member = await memberService.getMemberByTelegramId(ctx.from.id);
+        const scope = ctx.callbackQuery.data.split(":")[1];
+        // callback data is client-controlled, so re-check permission for the requested scope
+        if (!member || !isBossOrAdmin(member)) {
+            await ctx.reply(t(ctx.lang, 'common.noPermission'));
+            return;
+        }
+        if (scope === 'ALL') {
+            await sendPayroll(ctx);
+        } else if (Types.ObjectId.isValid(scope)) {
+            await sendPayroll(ctx, new Types.ObjectId(scope));
+        }
+    });
+
     bot.hears(allLabels('menu.report'), async (ctx) => {
         if (!ctx.from) return;
 

@@ -15,6 +15,7 @@ export const en: Record<TranslationKey, string> = {
     'menu.employees': '👥 Edit employee details',
     'menu.addProduct': '➕ Add product',
     'menu.branchSettings': '⚙️ Branch settings',
+    'menu.payroll': "💰 Payroll",
     'menu.home': '🔙 Main menu',
 
     'common.welcome': 'Welcome, {name}! 👋\nPlease choose an action:',
@@ -78,6 +79,11 @@ export const en: Record<TranslationKey, string> = {
     'report.noHistory': "You don't have any reports yet.",
     'report.noPast': 'There are no reports for past months yet.',
     'report.pickBranch': 'Which branch do you need the {month}/{year} report for?',
+    'payroll.pickScope': "Which branch?",
+    'payroll.allBranches': "🏢 All branches",
+    'payroll.caption': "💰 {scope}\n{month} {year}: total paid to employees — {amount}",
+    'payroll.thisMonth': "Paid this month",
+    'payroll.yearTitle': "Monthly payments in {year}",
     'months': 'January,February,March,April,May,June,July,August,September,October,November,December',
 
     'branch.askName': 'Enter the name of the new branch ✍️',
