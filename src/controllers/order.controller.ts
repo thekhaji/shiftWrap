@@ -210,10 +210,20 @@ export function orderController(bot: Bot<MyContext>) {
             try {
                 const products = await productService.getProductsByIds(order.items.map(i => i.productId));
                 const view = orderMessageView(order, products, member.name);
-                const sent = await ctx.api.sendMessage(branch.orderGroupId, view.text, {
-                    message_thread_id: branch.threadIds.order,
-                    reply_markup: view.keyboard,
-                });
+                // the new order carries the product photo; ordered / received are text only
+                const photo = products[0]?.imageFileId;
+                const options = { message_thread_id: branch.threadIds.order, reply_markup: view.keyboard };
+                let sent;
+                if (photo) {
+                    try {
+                        sent = await ctx.api.sendPhoto(branch.orderGroupId, photo, { caption: view.text, ...options });
+                    } catch (err) {
+                        console.error(`bad imageFileId for order ${order._id}:`, err);
+                        sent = await ctx.api.sendMessage(branch.orderGroupId, view.text, options); // fall back to text
+                    }
+                } else {
+                    sent = await ctx.api.sendMessage(branch.orderGroupId, view.text, options);
+                }
                 await orderService.setGroupMessageId(order._id, sent.message_id);
             } catch (err) {
                 console.error("send order to group failed:", err);
