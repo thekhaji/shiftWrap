@@ -5,7 +5,7 @@ import AttendanceService from '../models/Attendance.service';
 import MemberService from '../models/Member.service';
 import ReportService from '../models/Report.service';
 import BranchService from '../models/Branch.service';
-import { isBossOrAdmin, hasManagerPermission, isManagerOf } from '../libs/utils/permission';
+import { isBossOrAdmin, hasManagerPermission, hasSalaryAccess, isSalaryManagerOf } from '../libs/utils/permission';
 import { branchPickerView, monthPickerView, payrollScopePickerView } from '../views/index';
 import { formatMoney, renderPayrollChart } from '../libs/utils/payrollChart';
 import { nowInSeoul } from '../libs/utils/time';
@@ -80,7 +80,9 @@ export function reportController(bot: Bot<MyContext>) {
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!member) return;
 
-        if (hasManagerPermission(member)) {
+        if (!hasSalaryAccess(member)) {
+            await ctx.reply(t(ctx.lang, 'common.noPermission'));
+        } else if (hasManagerPermission(member)) {
             await sendPayroll(ctx, member.branchId!);
         } else if (isBossOrAdmin(member)) {
             const view = payrollScopePickerView(ctx.lang, await branchService.getAllBranches());
@@ -149,7 +151,9 @@ export function reportController(bot: Bot<MyContext>) {
         const year = now.getFullYear();
         const month = now.getMonth() + 1;
 
-        if (hasManagerPermission(member)) {
+        if (!hasSalaryAccess(member)) {
+            await ctx.reply(t(ctx.lang, 'common.noPermission'));
+        } else if (hasManagerPermission(member)) {
             await sendBranchReport(ctx, member.branchId!, year, month);
         } else if (isBossOrAdmin(member)) {
             const view = branchPickerView(ctx.lang, await branchService.getAllBranches(), year, month, "branch_report");
@@ -170,7 +174,7 @@ export function reportController(bot: Bot<MyContext>) {
         if (!Types.ObjectId.isValid(branchIdStr)) return;
 
         // callback data is client-controlled, so re-check permission for the requested branch
-        if (!isBossOrAdmin(member) && !isManagerOf(member, branchIdStr)) {
+        if (!isBossOrAdmin(member) && !isSalaryManagerOf(member, branchIdStr)) {
             await ctx.reply(t(ctx.lang, 'common.noPermission'));
             return;
         }

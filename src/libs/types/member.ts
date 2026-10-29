@@ -1,4 +1,4 @@
-import {MemberStatus, MemberType} from '../enums/member.enum';
+import {ManagerRole, MemberStatus, MemberType} from '../enums/member.enum';
 import {Types} from 'mongoose';
 import {Lang} from '../i18n';
 
@@ -10,6 +10,7 @@ export interface Member {
     phone: string;
     language?: Lang;            // chosen at registration, changeable from the menu
     type: MemberType;
+    managerRole?: ManagerRole;  // only for managers; unset = MAIN
     status: MemberStatus;
     branchId?: Types.ObjectId; //set by Boss/Admin
     hourlyRate?: number; //set by manager
@@ -33,6 +34,7 @@ export interface MemberInput {
 // (which shapes self-registration) so a member can never submit these about themselves.
 export interface MemberManagerUpdate {
     type?: MemberType;
+    managerRole?: ManagerRole;
     status?: MemberStatus;
     name?: string;
     phone?: string;

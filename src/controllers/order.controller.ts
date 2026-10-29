@@ -9,7 +9,7 @@ import { ProductCategory } from '../libs/enums/product.enum';
 import { allLabels, t } from '../libs/i18n';
 import { Order } from '../libs/types/order';
 import { hasManagerPermission, isBossOrAdmin, isManagerOf } from '../libs/utils/permission';
-import { productCardView, orderCategoryView, orderControlView, orderMessageView, storageMenuView } from '../views/index';
+import { productCardView, orderCategoryView, orderControlView, orderMessageView, orderReviewView, storageMenuView } from '../views/index';
 
 const memberService = new MemberService();
 const branchService = new BranchService();
@@ -147,8 +147,46 @@ export function orderController(bot: Bot<MyContext>) {
         await ctx.answerCallbackQuery();
     });
 
-    // 4. Send to the group
+    // 4. "Send" opens the review: the chosen products, each removable, then Submit
     bot.callbackQuery('order_send', async (ctx) => {
+        const member = await memberService.getMemberByTelegramId(ctx.from.id);
+        if (!member || !hasManagerPermission(member) || !member.branchId) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
+            return;
+        }
+        const draft = await orderService.getOrCreateDraft(member._id, member.branchId);
+        if (draft.items.length === 0) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'order.selectOne'), show_alert: true });
+            return;
+        }
+        await ctx.answerCallbackQuery();
+        await clearBasket(ctx); // the catalog cards would show stale selections
+        const view = orderReviewView(ctx.lang, draft.items);
+        const msg = await ctx.reply(view.text, { reply_markup: view.keyboard });
+        ctx.session.basketMessageIds = [msg.message_id];
+    });
+
+    // 4a. Remove a product from the review
+    bot.callbackQuery(/^order_rm:/, async (ctx) => {
+        const member = await memberService.getMemberByTelegramId(ctx.from.id);
+        if (!member || !hasManagerPermission(member) || !member.branchId) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
+            return;
+        }
+        const productId = ctx.callbackQuery.data.split(':')[1];
+        let draft = await orderService.getOrCreateDraft(member._id, member.branchId);
+        // only remove: a double tap must not add the product back
+        if (draft.items.some(i => i.productId.toString() === productId)) {
+            const product = (await productService.getActiveProductsByBranch(member.branchId)).find(p => p._id.toString() === productId);
+            if (product) draft = await orderService.toggleItem(draft._id, product);
+        }
+        await ctx.answerCallbackQuery();
+        const view = orderReviewView(ctx.lang, draft.items);
+        await ctx.editMessageText(view.text, { reply_markup: view.keyboard }).catch(() => {});
+    });
+
+    // 4b. Submit: send to the group
+    bot.callbackQuery('order_submit', async (ctx) => {
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!member || !hasManagerPermission(member) || !member.branchId) {
             await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });

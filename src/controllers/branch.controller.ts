@@ -4,11 +4,11 @@ import BranchService from '../models/Branch.service';
 import MemberService from '../models/Member.service';
 import GroupService from '../models/Group.service';
 import ProductService from '../models/Product.service';
-import { askBranchNameView, askLocationView, branchGroupPickerView, branchGroupsView, branchManagersView, GroupKind, branchProductAccessView, branchSettingsMenuView, settingsCandidatePickerView, branchRegisteredView, mainMenuView, managerBranchPickerView, managerCandidatePickerView, settingsBranchPickerView } from '../views/index';
+import { askBranchNameView, askLocationView, branchGroupPickerView, branchGroupsView, branchManagersView, GroupKind, branchProductAccessView, branchSettingsMenuView, settingsCandidatePickerView, branchRegisteredView, mainMenuView, managerBranchPickerView, managerCandidatePickerView, managerRolePickerView, settingsBranchPickerView } from '../views/index';
 import Errors, { Message } from '../libs/Errors';
-import { MAX_MANAGERS_PER_BRANCH } from '../models/Member.service';
+import { MAX_MAIN_MANAGERS, roleFromCode, roleOf } from '../models/Member.service';
 import { Branch } from '../libs/types/branch';
-import { MemberType } from '../libs/enums/member.enum';
+import { ManagerRole, MemberType } from '../libs/enums/member.enum';
 import { isAdmin, isBossOrAdmin } from '../libs/utils/permission';
 import { Types } from 'mongoose';
 import { allLabels, errorText, t } from '../libs/i18n';
@@ -139,21 +139,45 @@ export function branchController(bot: Bot<MyContext>) {
             await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.branchNotFound') });
             return;
         }
+        await ctx.answerCallbackQuery();
+        const view = managerRolePickerView(ctx.lang, branch);
+        await ctx.editMessageText(view.text, { reply_markup: view.keyboard });
+    });
+
+    bot.callbackQuery(/^mgr_role:/, async (ctx) => {
+        const actor = await memberService.getMemberByTelegramId(ctx.from.id);
+        const [branchId, code] = ctx.callbackQuery.data.split(":")[1].split(",");
+        if (!actor || !isBossOrAdmin(actor) || !Types.ObjectId.isValid(branchId)) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
+            return;
+        }
+        const branch = await branchService.getBranchById(new Types.ObjectId(branchId));
+        if (!branch) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.branchNotFound') });
+            return;
+        }
+        const role = roleFromCode(code);
+        const managers = await memberService.getManagersByBranch(branch._id);
+        if (role === ManagerRole.MAIN && managers.filter(m => roleOf(m) === role).length >= MAX_MAIN_MANAGERS) {
+            await ctx.answerCallbackQuery({ text: errorText(ctx.lang, Message.MANAGER_LIMIT), show_alert: true });
+            return;
+        }
+        const onBranch = new Set(managers.map(m => m.telegramId));
         const candidates = (await memberService.getAllMembers())
-            .filter(m => m.type === MemberType.USER || m.type === MemberType.MANAGER)
+            .filter(m => (m.type === MemberType.USER || m.type === MemberType.MANAGER) && !onBranch.has(m.telegramId))
             .sort((a, b) => a.name.localeCompare(b.name));
         if (candidates.length === 0) {
             await ctx.answerCallbackQuery({ text: t(ctx.lang, 'mgr.noCandidates'), show_alert: true });
             return;
         }
         await ctx.answerCallbackQuery();
-        const view = managerCandidatePickerView(ctx.lang, branch, candidates);
+        const view = managerCandidatePickerView(ctx.lang, branch, candidates, code === 'A' ? 'A' : 'M');
         await ctx.editMessageText(view.text, { reply_markup: view.keyboard });
     });
 
     bot.callbackQuery(/^mgr_user:/, async (ctx) => {
         const actor = await memberService.getMemberByTelegramId(ctx.from.id);
-        const [branchId, telegramId] = ctx.callbackQuery.data.split(":")[1].split(",");
+        const [branchId, telegramId, code] = ctx.callbackQuery.data.split(":")[1].split(",");
         if (!actor || !isBossOrAdmin(actor) || !Types.ObjectId.isValid(branchId)) {
             await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
             return;
@@ -165,9 +189,10 @@ export function branchController(bot: Bot<MyContext>) {
             return;
         }
         try {
-            const updated = await memberService.assignManager(target.telegramId, branch._id);
+            const role = roleFromCode(code);
+            const updated = await memberService.assignManager(target.telegramId, branch._id, role);
             await ctx.answerCallbackQuery();
-            await ctx.editMessageText(t(ctx.lang, 'mgr.assigned', { name: updated.name, branch: branch.name }));
+            await ctx.editMessageText(t(ctx.lang, role === ManagerRole.ASSISTANT ? 'mgr.assignedAssistant' : 'mgr.assigned', { name: updated.name, branch: branch.name }));
         } catch (err) {
             await answerError(ctx, err);
         }
@@ -305,10 +330,12 @@ export function branchController(bot: Bot<MyContext>) {
 
     // pick who to assign
     bot.callbackQuery(/^bs_ma:/, async (ctx) => {
-        const branch = await adminBranch(ctx, ctx.callbackQuery.data.split(":")[1]);
+        const [, branchId, code] = ctx.callbackQuery.data.split(":");
+        const branch = await adminBranch(ctx, branchId);
         if (!branch) return;
+        const role = roleFromCode(code);
         const managers = await memberService.getManagersByBranch(branch._id);
-        if (managers.length >= MAX_MANAGERS_PER_BRANCH) {
+        if (role === ManagerRole.MAIN && managers.filter(m => roleOf(m) === role).length >= MAX_MAIN_MANAGERS) {
             await ctx.answerCallbackQuery({ text: errorText(ctx.lang, Message.MANAGER_LIMIT), show_alert: true });
             return;
         }
@@ -320,12 +347,12 @@ export function branchController(bot: Bot<MyContext>) {
             return;
         }
         await ctx.answerCallbackQuery();
-        const view = settingsCandidatePickerView(ctx.lang, branch, candidates);
+        const view = settingsCandidatePickerView(ctx.lang, branch, candidates, code === 'A' ? 'A' : 'M');
         await ctx.editMessageText(view.text, { reply_markup: view.keyboard });
     });
 
     bot.callbackQuery(/^bs_mu:/, async (ctx) => {
-        const [, branchId, telegramId] = ctx.callbackQuery.data.split(":");
+        const [, branchId, telegramId, code] = ctx.callbackQuery.data.split(":");
         const branch = await adminBranch(ctx, branchId);
         if (!branch) return;
         const target = await memberService.getMemberByTelegramId(Number(telegramId));
@@ -334,7 +361,7 @@ export function branchController(bot: Bot<MyContext>) {
             return;
         }
         try {
-            await memberService.assignManager(target.telegramId, branch._id);
+            await memberService.assignManager(target.telegramId, branch._id, roleFromCode(code));
         } catch (err) {
             await answerError(ctx, err);
             return;

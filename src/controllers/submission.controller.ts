@@ -14,7 +14,7 @@ import { buildPlan, readEditedReport, ShiftPlan } from '../libs/utils/reportEdit
 import { formatMoney } from '../libs/utils/payrollChart';
 import { previousMonthSeoul } from '../libs/utils/date';
 import { approvalRequestView, branchPickerView } from '../views/index';
-import { isBossOrAdmin, isManagerOf } from '../libs/utils/permission';
+import { isAssistant, isBossOrAdmin, isSalaryManagerOf } from '../libs/utils/permission';
 
 const attendanceService = new AttendanceService();
 const branchService = new BranchService();
@@ -198,9 +198,9 @@ export function submissionController(bot: Bot<MyContext>) {
         return lines.join('\n');
     }
 
-    // the branch's other managers; with none, bosses and admins
+    // the branch's main manager (not the assistant, not the submitter); with none, bosses and admins
     async function approversFor(branchId: Types.ObjectId, submitter: Member): Promise<Member[]> {
-        const managers = (await memberService.getManagersByBranch(branchId)).filter(m => m.telegramId !== submitter.telegramId);
+        const managers = (await memberService.getManagersByBranch(branchId)).filter(m => m.telegramId !== submitter.telegramId && !isAssistant(m));
         return managers.length ? managers : await memberService.getBossesAndAdmins();
     }
 
@@ -272,7 +272,7 @@ export function submissionController(bot: Bot<MyContext>) {
         const [, subId, revision] = ctx.callbackQuery.data.split(':');
         const actor = await memberService.getMemberByTelegramId(ctx.from.id);
         const sub = await payrollService.getSubmissionById(subId);
-        if (!actor || !sub || !(isBossOrAdmin(actor) || isManagerOf(actor, sub.branchId.toString())) || actor._id.equals(sub.memberId)) {
+        if (!actor || !sub || !(isBossOrAdmin(actor) || isSalaryManagerOf(actor, sub.branchId.toString())) || actor._id.equals(sub.memberId)) {
             await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
             return;
         }

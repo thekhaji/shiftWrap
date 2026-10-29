@@ -6,7 +6,7 @@ import BranchService from '../models/Branch.service';
 import MemberService from '../models/Member.service';
 import PayrollService from '../models/Payroll.service';
 import { Member } from '../libs/types/member';
-import { hasManagerPermission, isBossOrAdmin, isManagerOf } from '../libs/utils/permission';
+import { hasManagerPermission, hasSalaryAccess, isBossOrAdmin, isSalaryManagerOf } from '../libs/utils/permission';
 import { previousMonthSeoul } from '../libs/utils/date';
 import { allLabels, t } from '../libs/i18n';
 import { approvalRequestView, branchPickerView, joinRequestView, payrollStatusView } from '../views/index';
@@ -39,8 +39,10 @@ export function payrollController(bot: Bot<MyContext>) {
         const branches = new Map((await branchService.getAllBranches()).map(b => [b._id.toString(), b.name]));
 
         const employees = await memberService.getPendingMembers(scope);
-        // a manager can't approve their own edits
-        const submissions = (await payrollService.getPending(scope)).filter(s => !s.memberId.equals(actor._id));
+        // a manager can't approve their own edits; the assistant only sees new employee requests
+        const submissions = hasSalaryAccess(actor)
+            ? (await payrollService.getPending(scope)).filter(s => !s.memberId.equals(actor._id))
+            : [];
 
         if (employees.length === 0 && submissions.length === 0) {
             await ctx.reply(t(ctx.lang, 'req.none'));
@@ -87,7 +89,7 @@ export function payrollController(bot: Bot<MyContext>) {
     bot.hears(allLabels('menu.payrollStatus'), async (ctx) => {
         if (!ctx.from) return;
         const actor = await memberService.getMemberByTelegramId(ctx.from.id);
-        if (!canReview(actor)) {
+        if (!actor || !hasSalaryAccess(actor)) {
             await ctx.reply(t(ctx.lang, 'common.noPermission'));
             return;
         }
@@ -106,7 +108,7 @@ export function payrollController(bot: Bot<MyContext>) {
         const actor = await memberService.getMemberByTelegramId(ctx.from.id);
         const branchId = ctx.callbackQuery.data.split(':')[1].split(',')[0];
         // callback data is client-controlled, so check the permission for the requested branch
-        if (!actor || !Types.ObjectId.isValid(branchId) || !(isBossOrAdmin(actor) || isManagerOf(actor, branchId))) return;
+        if (!actor || !Types.ObjectId.isValid(branchId) || !(isBossOrAdmin(actor) || isSalaryManagerOf(actor, branchId))) return;
         const view = await statusFor(ctx.lang, new Types.ObjectId(branchId));
         if (view) await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
@@ -115,7 +117,7 @@ export function payrollController(bot: Bot<MyContext>) {
     bot.callbackQuery(/^ps_reopen:/, async (ctx) => {
         const actor = await memberService.getMemberByTelegramId(ctx.from.id);
         const branchId = ctx.callbackQuery.data.split(':')[1];
-        if (!actor || !Types.ObjectId.isValid(branchId) || !(isBossOrAdmin(actor) || isManagerOf(actor, branchId))) {
+        if (!actor || !Types.ObjectId.isValid(branchId) || !(isBossOrAdmin(actor) || isSalaryManagerOf(actor, branchId))) {
             await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
             return;
         }

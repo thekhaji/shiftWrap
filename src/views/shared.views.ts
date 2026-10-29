@@ -1,6 +1,6 @@
 import { Keyboard, InlineKeyboard } from "grammy";
 import { Member } from "../libs/types/member";
-import { hasManagerPermission } from "../libs/utils/permission";
+import { hasManagerPermission, hasSalaryAccess } from "../libs/utils/permission";
 import { DEFAULT_LANG, LANGUAGES, LANGUAGE_NAMES, Lang, t } from "../libs/i18n";
 
 function mainMenuKeyboard(member?: Member) {
@@ -37,8 +37,11 @@ function mainMenuKeyboard(member?: Member) {
     if (member && hasManagerPermission(member)) {
         employeeKeyboard.row().text(t(lang, 'menu.storage'));
         employeeKeyboard.row().text(t(lang, 'menu.cleaningControl'));
-        employeeKeyboard.row().text(t(lang, 'menu.branchReport'));
-        employeeKeyboard.row().text(t(lang, 'menu.payroll')).text(t(lang, 'menu.payrollStatus'));
+        // the assistant never sees pay: no branch report, payroll or payroll status
+        if (hasSalaryAccess(member)) {
+            employeeKeyboard.row().text(t(lang, 'menu.branchReport'));
+            employeeKeyboard.row().text(t(lang, 'menu.payroll')).text(t(lang, 'menu.payrollStatus'));
+        }
         employeeKeyboard.row().text(t(lang, 'menu.requests'));
         employeeKeyboard.row().text(t(lang, 'menu.employees'));
     }

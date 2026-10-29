@@ -1,5 +1,5 @@
 import mongoose, { Schema, SchemaType } from 'mongoose';
-import {MemberType, MemberStatus} from '../libs/enums/member.enum';
+import {MemberType, MemberStatus, ManagerRole} from '../libs/enums/member.enum';
 
 const memberSchema = new Schema({
     telegramId: { 
@@ -29,6 +29,10 @@ const memberSchema = new Schema({
         type: String, 
         enum: MemberType, 
         default: MemberType.USER 
+    },
+    managerRole: {
+        type: String,
+        enum: ManagerRole   // only for type MANAGER; unset = MAIN
     },
     status: { 
         type: String, 

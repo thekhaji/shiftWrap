@@ -3,9 +3,20 @@ import { Member, MemberInput, MemberManagerUpdate } from '../libs/types/member';
 import Errors, { HttpCode, Message } from '../libs/Errors';
 import { Types } from 'mongoose';
 import { Lang } from '../libs/i18n';
-import { MemberStatus, MemberType } from '../libs/enums/member.enum';
+import { ManagerRole, MemberStatus, MemberType } from '../libs/enums/member.enum';
 
-export const MAX_MANAGERS_PER_BRANCH = 2;
+// a branch has one main manager and any number of assistants
+export const MAX_MAIN_MANAGERS = 1;
+
+// callback data carries the role as one letter
+export type RoleCode = 'M' | 'A';
+export function roleFromCode(code?: string): ManagerRole {
+    return code === 'A' ? ManagerRole.ASSISTANT : ManagerRole.MAIN;
+}
+
+export function roleOf(member: Member): ManagerRole {
+    return member.managerRole ?? ManagerRole.MAIN;
+}
 
 class MemberService {
     private readonly memberModel;
@@ -63,13 +74,14 @@ class MemberService {
         return this.memberModel.find({ type: MemberType.MANAGER, branchId }).sort({ name: 1 }).lean<Member[]>();
     }
 
-    // a branch holds at most MAX_MANAGERS_PER_BRANCH managers
-    async assignManager(telegramId: number, branchId: Types.ObjectId): Promise<Member> {
+    // one main manager per branch, any number of assistants; re-assigning the same person is fine
+    async assignManager(telegramId: number, branchId: Types.ObjectId, role: ManagerRole = ManagerRole.MAIN): Promise<Member> {
         const managers = await this.getManagersByBranch(branchId);
-        if (!managers.some(m => m.telegramId === telegramId) && managers.length >= MAX_MANAGERS_PER_BRANCH) {
+        const otherMains = managers.filter(m => roleOf(m) === ManagerRole.MAIN && m.telegramId !== telegramId);
+        if (role === ManagerRole.MAIN && otherMains.length >= MAX_MAIN_MANAGERS) {
             throw new Errors(HttpCode.BAD_REQUEST, Message.MANAGER_LIMIT);
         }
-        return this.updateMember(telegramId, { type: MemberType.MANAGER, branchId, status: MemberStatus.ACTIVE });
+        return this.updateMember(telegramId, { type: MemberType.MANAGER, managerRole: role, branchId, status: MemberStatus.ACTIVE });
     }
 
     // employee changed their mind or was rejected: they pick a branch again
@@ -96,7 +108,7 @@ class MemberService {
         if (telegramIds.length === 0) return;
         await this.memberModel.updateMany(
             { telegramId: { $in: telegramIds }, type: { $ne: MemberType.ADMIN } },
-            { type: MemberType.ADMIN, status: MemberStatus.ACTIVE, $unset: { branchId: '' } }
+            { type: MemberType.ADMIN, status: MemberStatus.ACTIVE, $unset: { branchId: '', managerRole: '' } }
         );
     }
 
@@ -112,7 +124,7 @@ class MemberService {
     async promoteToBoss(telegramId: number): Promise<Member> {
         const member = await this.memberModel.findOneAndUpdate(
             { telegramId },
-            { type: MemberType.BOSS, status: MemberStatus.ACTIVE, $unset: { branchId: '' } },
+            { type: MemberType.BOSS, status: MemberStatus.ACTIVE, $unset: { branchId: '', managerRole: '' } },
             { new: true }
         );
         if (!member) throw new Errors(HttpCode.NOT_FOUND, Message.NO_DATA_FOUND);
@@ -123,7 +135,7 @@ class MemberService {
     async removeManager(telegramId: number): Promise<Member> {
         const member = await this.memberModel.findOneAndUpdate(
             { telegramId },
-            { type: MemberType.USER, $unset: { branchId: '' } },
+            { type: MemberType.USER, $unset: { branchId: '', managerRole: '' } },
             { new: true }
         );
         if (!member) throw new Errors(HttpCode.NOT_FOUND, Message.NO_DATA_FOUND);

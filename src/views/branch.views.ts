@@ -2,7 +2,8 @@ import { Keyboard, InlineKeyboard } from "grammy";
 import { Branch } from "../libs/types/branch";
 import { Member } from "../libs/types/member";
 import { Product } from "../libs/types/product";
-import { MAX_MANAGERS_PER_BRANCH } from "../models/Member.service";
+import { RoleCode } from "../models/Member.service";
+import { isAssistant } from "../libs/utils/permission";
 import { Lang, t } from "../libs/i18n";
 
 export function askBranchNameView(lang: Lang) {
@@ -43,10 +44,18 @@ export function managerBranchPickerView(lang: Lang, branches: Branch[]) {
 }
 
 // step 2: pick the employee (boss/admin accounts are never candidates)
-export function managerCandidatePickerView(lang: Lang, branch: Branch, candidates: Member[]) {
+export function managerRolePickerView(lang: Lang, branch: Branch) {
+    const id = branch._id.toString();
+    const keyboard = new InlineKeyboard()
+        .text(t(lang, 'mgr.roleManager'), `mgr_role:${id},M`).row()
+        .text(t(lang, 'mgr.roleAssistant'), `mgr_role:${id},A`).row();
+    return { text: t(lang, 'mgr.pickRole', { branch: branch.name }), keyboard };
+}
+
+export function managerCandidatePickerView(lang: Lang, branch: Branch, candidates: Member[], role: RoleCode) {
     const keyboard = new InlineKeyboard();
     for (const user of candidates) {
-        keyboard.text(user.name, `mgr_user:${branch._id.toString()},${user.telegramId}`).row();
+        keyboard.text(user.name, `mgr_user:${branch._id.toString()},${user.telegramId},${role}`).row();
     }
     return { text: t(lang, 'mgr.pickUser', { branch: branch.name }), keyboard };
 }
@@ -96,23 +105,24 @@ export function branchSettingsMenuView(lang: Lang, branch: Branch) {
     return { text: `${t(lang, 'bs.branchTitle', { branch: branch.name })}\n${t(lang, 'bs.menuText')}`, keyboard };
 }
 
-// current managers (tap to remove) + add button while there is room
+// the branch's manager and assistants (tap to remove); the manager seat has one slot, assistants are unlimited
 export function branchManagersView(lang: Lang, branch: Branch, managers: Member[]) {
     const id = branch._id.toString();
     const keyboard = new InlineKeyboard();
-    for (const m of managers) keyboard.text(`❌ ${m.name}`, `bs_mr:${id}:${m.telegramId}`).row();
-    if (managers.length < MAX_MANAGERS_PER_BRANCH) keyboard.text(t(lang, 'bs.addManager'), `bs_ma:${id}`).row();
+    for (const m of managers) {
+        const role = t(lang, isAssistant(m) ? 'role.ASSISTANT' : 'role.MANAGER');
+        keyboard.text(`❌ ${m.name} · ${role}`, `bs_mr:${id}:${m.telegramId}`).row();
+    }
+    if (!managers.some(m => !isAssistant(m))) keyboard.text(t(lang, 'bs.addManager'), `bs_ma:${id}:M`).row();
+    keyboard.text(t(lang, 'bs.addAssistant'), `bs_ma:${id}:A`).row();
     keyboard.text(t(lang, 'bs.backShort'), `bs_b:${id}`);
-    return {
-        text: t(lang, 'bs.managersTitle', { branch: branch.name, count: managers.length, max: MAX_MANAGERS_PER_BRANCH }),
-        keyboard,
-    };
+    return { text: t(lang, 'bs.managersTitle', { branch: branch.name }), keyboard };
 }
 
 // candidates for the settings flow; the shared mgr_user handler does the assigning
-export function settingsCandidatePickerView(lang: Lang, branch: Branch, candidates: Member[]) {
+export function settingsCandidatePickerView(lang: Lang, branch: Branch, candidates: Member[], role: RoleCode) {
     const keyboard = new InlineKeyboard();
-    for (const user of candidates) keyboard.text(user.name, `bs_mu:${branch._id.toString()}:${user.telegramId}`).row();
+    for (const user of candidates) keyboard.text(user.name, `bs_mu:${branch._id.toString()}:${user.telegramId}:${role}`).row();
     keyboard.text(t(lang, 'bs.backShort'), `bs_m:${branch._id.toString()}`);
     return { text: t(lang, 'mgr.pickUser', { branch: branch.name }), keyboard };
 }

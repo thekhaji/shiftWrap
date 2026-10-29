@@ -4,6 +4,7 @@ import MemberModel from '../../schema/Member.model';
 import { Member } from '../types/member';
 import { DEFAULT_LANG, t } from '../i18n';
 import { mainMenuView } from '../../views/index';
+import { isAssistant } from './permission';
 
 // A Telegram reply keyboard lives in the user's client until the bot sends a new one.
 // So whenever a member's role or branch changes (from the bot OR straight in the database),
@@ -15,6 +16,7 @@ export function startMenuSync(bot: Bot<MyContext>) {
                 operationType: 'update',
                 $or: [
                     { 'updateDescription.updatedFields.type': { $exists: true } },
+                    { 'updateDescription.updatedFields.managerRole': { $exists: true } },
                     { 'updateDescription.updatedFields.branchId': { $exists: true } },
                 ],
             },
@@ -29,7 +31,7 @@ export function startMenuSync(bot: Bot<MyContext>) {
         const view = mainMenuView(member);
         await bot.api.sendMessage(
             member.telegramId,
-            `${t(lang, 'role.changed', { role: t(lang, `role.${member.type}`) })}\n${view.text}`,
+            `${t(lang, 'role.changed', { role: t(lang, isAssistant(member) ? 'role.ASSISTANT' : `role.${member.type}`) })}\n${view.text}`,
             { reply_markup: view.keyboard }
         ).catch((err) => console.error(`menu sync failed for ${member.telegramId}:`, err));
     });

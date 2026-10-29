@@ -25,14 +25,21 @@ export function userPickerView(lang: Lang, users: Member[]) {
     };
 }
 
-export function userEditView(lang: Lang, user: Member, branchName: string | null) {
+// salary = false (the branch assistant): only the phone can be changed and pay details stay hidden
+export function userEditView(lang: Lang, user: Member, branchName: string | null, salary = true) {
     const keyboard = new InlineKeyboard()
-        .text(t(lang, 'emp.btnPhone'), `edit_user:${user.telegramId},phone`).row()
-        .text(t(lang, 'emp.btnBankName'), `edit_user:${user.telegramId},bankName`).row()
-        .text(t(lang, 'emp.btnBankAccount'), `edit_user:${user.telegramId},bankAccount`).row()
-        .text(t(lang, 'emp.btnRate'), `edit_user:${user.telegramId},hourlyRate`).row();
+        .text(t(lang, 'emp.btnPhone'), `edit_user:${user.telegramId},phone`).row();
+    if (salary) {
+        keyboard
+            .text(t(lang, 'emp.btnBankName'), `edit_user:${user.telegramId},bankName`).row()
+            .text(t(lang, 'emp.btnBankAccount'), `edit_user:${user.telegramId},bankAccount`).row()
+            .text(t(lang, 'emp.btnRate'), `edit_user:${user.telegramId},hourlyRate`).row();
+    }
 
     const unknown = t(lang, 'common.unknown');
+    if (!salary) {
+        return { text: t(lang, 'emp.cardLimited', { name: user.name, phone: user.phone, branch: branchName || unknown }), keyboard };
+    }
     return {
         text: t(lang, 'emp.card', {
             name: user.name,

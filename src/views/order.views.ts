@@ -1,6 +1,6 @@
 import { Keyboard, InlineKeyboard } from 'grammy';
 import { Product } from '../libs/types/product';
-import { Order } from '../libs/types/order';
+import { Order, OrderItem } from '../libs/types/order';
 import { OrderStatus } from '../libs/enums/order.enum';
 import { ProductCategory } from '../libs/enums/product.enum';
 import { Lang, t } from '../libs/i18n';
@@ -31,6 +31,19 @@ export function orderCategoryView(lang: Lang, counts: Map<ProductCategory, numbe
     if (uncategorized) keyboard.text(`${t(lang, 'order.uncategorized')} (${uncategorized})`, 'order_cat:NONE').row();
     keyboard.text(t(lang, 'order.send'), 'order_send').text(t(lang, 'common.cancel'), 'order_cancel');
     return { text: t(lang, 'order.pickCategory'), keyboard };
+}
+
+// the last look before sending: every chosen product with a button to remove it, then Submit
+export function orderReviewView(lang: Lang, items: OrderItem[]) {
+    const keyboard = new InlineKeyboard();
+    if (items.length === 0) {
+        keyboard.text(t(lang, 'order.groups'), 'order_categories').row().text(t(lang, 'common.cancel'), 'order_cancel');
+        return { text: t(lang, 'order.reviewEmpty'), keyboard };
+    }
+    for (const item of items) keyboard.text(`❌ ${item.name}`, `order_rm:${item.productId.toString()}`).row();
+    keyboard.text(t(lang, 'order.groups'), 'order_categories').text(t(lang, 'order.submit'), 'order_submit').row();
+    keyboard.text(t(lang, 'common.cancel'), 'order_cancel');
+    return { text: t(lang, 'order.reviewTitle', { n: items.length }), keyboard };
 }
 
 export function orderControlView(lang: Lang) {

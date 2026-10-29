@@ -10,7 +10,7 @@ import { askPhoneView, mainMenuView, errorView, userEditView, userPickerView, as
 import { allLabels, errorText, t } from "../libs/i18n";
 import Errors, { Message } from "../libs/Errors";
 import { Member, MemberInput, MemberManagerUpdate, EditableMemberField, EDITABLE_MEMBER_FIELDS } from "../libs/types/member";
-import { hasManagerPermission, isBossOrAdmin } from "../libs/utils/permission";
+import { hasManagerPermission, hasSalaryAccess, isBossOrAdmin } from "../libs/utils/permission";
 
 const memberService = new MemberService();
 const branchService = new BranchService();
@@ -153,7 +153,7 @@ export function memberController(bot: Bot<MyContext>) {
         if (!member) return;
 
         const branch = member.branchId ? await branchService.getBranchById(member.branchId) : undefined;
-        const view = await userEditView(ctx.lang, member, branch?.name || null);
+        const view = await userEditView(ctx.lang, member, branch?.name || null, hasSalaryAccess(actor));
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
 
@@ -169,6 +169,11 @@ export function memberController(bot: Bot<MyContext>) {
 
         const [telegramId, field] = ctx.callbackQuery.data.split(":")[1].split(",");
         if (!isEditableField(field)) return;
+        // the branch assistant may change phone numbers only, never pay or bank details
+        if (field !== "phone" && !hasSalaryAccess(actor)) {
+            await ctx.reply(t(ctx.lang, 'common.noPermission'));
+            return;
+        }
 
         const member = await memberService.getMemberByTelegramId(Number(telegramId));
         if (!member) return;
@@ -224,7 +229,8 @@ export function memberController(bot: Bot<MyContext>) {
             const updated = await memberService.updateMember(targetTelegramId, updateData);
             await ctx.reply(t(ctx.lang, 'emp.updated'));
             const branch = updated.branchId ? await branchService.getBranchById(updated.branchId) : undefined;
-            const view = await userEditView(ctx.lang, updated, branch?.name || null);
+            const editor = ctx.from ? await memberService.getMemberByTelegramId(ctx.from.id) : null;
+            const view = await userEditView(ctx.lang, updated, branch?.name || null, !!editor && hasSalaryAccess(editor));
             await ctx.reply(view.text, { reply_markup: view.keyboard });
         } catch (err) {
             if (err instanceof Errors) {

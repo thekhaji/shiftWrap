@@ -29,7 +29,7 @@ export enum Message{
     TOKEN_CREATION_FAILED = "Token creation error!",
     ORDER_NOT_FOUND = "Order not found!",
     EXISTING_PRODUCT = "A product with that name already exists!",
-    MANAGER_LIMIT = "A branch can have at most 2 managers!",
+    MANAGER_LIMIT = "This branch already has a manager!",
 }
 
 class Errors extends Error{
