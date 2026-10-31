@@ -16,3 +16,10 @@ export function adminTelegramIds(): number[] {
         .map(id => Number(id.trim()))
         .filter(id => Number.isInteger(id) && id > 0);
 }
+
+// REPORT_CUTOFF_DAY=25 : from this day of the month on, reports are for the month in progress
+// (employees submit at month end); before it, for the month that just ended (late submitters)
+export function reportCutoffDay(): number {
+    const day = Number(process.env.REPORT_CUTOFF_DAY);
+    return Number.isInteger(day) && day >= 2 && day <= 28 ? day : 25;
+}

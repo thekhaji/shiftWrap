@@ -1,6 +1,6 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
-import { monthRange, previousMonthSeoul } from '../libs/utils/date';
+import { monthRange, previousMonthSeoul, reportMonthSeoul } from '../libs/utils/date';
 
 // shifts are stored as Seoul wall-clock time labeled as UTC, so "now" is shifted by +9h
 const SEOUL_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -21,6 +21,28 @@ test('the Seoul clock decides: 00:30 on the 1st in Seoul is already the new mont
     // 2026-11-01 00:30 in Seoul is still 2026-10-31 15:30 in UTC
     setSeoulTime('2026-11-01T00:30:00Z');
     assert.deepEqual(previousMonthSeoul(), { year: 2026, month: 10 });
+});
+
+test('on the last day of the month the report is for that month', () => {
+    setSeoulTime('2026-10-31T18:00:00Z');
+    assert.deepEqual(reportMonthSeoul(), { year: 2026, month: 10 });
+});
+
+test('from the 25th on the report is for the month in progress', () => {
+    setSeoulTime('2026-10-25T00:30:00Z');
+    assert.deepEqual(reportMonthSeoul(), { year: 2026, month: 10 });
+});
+
+test('before the 25th the report is for the month that just ended', () => {
+    setSeoulTime('2026-11-03T12:00:00Z');
+    assert.deepEqual(reportMonthSeoul(), { year: 2026, month: 10 });
+    setSeoulTime('2026-10-24T23:30:00Z');
+    assert.deepEqual(reportMonthSeoul(), { year: 2026, month: 9 });
+});
+
+test('early January still reports December of the year before', () => {
+    setSeoulTime('2027-01-02T12:00:00Z');
+    assert.deepEqual(reportMonthSeoul(), { year: 2026, month: 12 });
 });
 
 test('month boundaries are half open', () => {

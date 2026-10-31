@@ -12,7 +12,7 @@ import { MemberStatus, MemberType } from '../libs/enums/member.enum';
 import { allLabels, DEFAULT_LANG, monthNames, t } from '../libs/i18n';
 import { buildPlan, readEditedReport, ShiftPlan } from '../libs/utils/reportEdit';
 import { formatMoney } from '../libs/utils/payrollChart';
-import { previousMonthSeoul } from '../libs/utils/date';
+import { reportMonthSeoul } from '../libs/utils/date';
 import { approvalRequestView, branchPickerView } from '../views/index';
 import { isAssistant, isBossOrAdmin, isSalaryManagerOf } from '../libs/utils/permission';
 
@@ -71,7 +71,7 @@ export function submissionController(bot: Bot<MyContext>) {
             await ctx.reply(t(ctx.lang, 'common.noPermission'));
             return;
         }
-        const { year, month } = previousMonthSeoul();
+        const { year, month } = reportMonthSeoul();
         const branchIds = await attendanceService.getBranchIdsForMemberAndMonth(member._id, year, month);
         if (branchIds.length === 0) {
             await ctx.reply(t(ctx.lang, 'report.noData'));
@@ -90,7 +90,7 @@ export function submissionController(bot: Bot<MyContext>) {
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
         if (!canSubmit(member)) return;
         // callback data is client-controlled: the month is recomputed and the branch must be one they worked at
-        const { year, month } = previousMonthSeoul();
+        const { year, month } = reportMonthSeoul();
         const branchId = ctx.callbackQuery.data.split(':')[1].split(',')[0];
         const branchIds = await attendanceService.getBranchIdsForMemberAndMonth(member._id, year, month);
         const chosen = branchIds.find(id => id.toString() === branchId);

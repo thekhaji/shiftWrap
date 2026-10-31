@@ -7,7 +7,7 @@ import MemberService from '../models/Member.service';
 import PayrollService from '../models/Payroll.service';
 import { Member } from '../libs/types/member';
 import { hasManagerPermission, hasSalaryAccess, isBossOrAdmin, isSalaryManagerOf } from '../libs/utils/permission';
-import { previousMonthSeoul } from '../libs/utils/date';
+import { reportMonthSeoul } from '../libs/utils/date';
 import { allLabels, t } from '../libs/i18n';
 import { approvalRequestView, branchPickerView, joinRequestView, payrollStatusView } from '../views/index';
 
@@ -70,7 +70,7 @@ export function payrollController(bot: Bot<MyContext>) {
 
     // who has submitted last month's report, and whether the branch is closed
     async function statusFor(lang: MyContext['lang'], branchId: Types.ObjectId) {
-        const { year, month } = previousMonthSeoul();
+        const { year, month } = reportMonthSeoul();
         const branch = await branchService.getBranchById(branchId);
         if (!branch) return null;
         const required = await attendanceService.getMemberIdsForBranchAndMonth(branchId, year, month);
@@ -98,7 +98,7 @@ export function payrollController(bot: Bot<MyContext>) {
             if (view) await ctx.reply(view.text, { reply_markup: view.keyboard });
             return;
         }
-        const { year, month } = previousMonthSeoul();
+        const { year, month } = reportMonthSeoul();
         const view = branchPickerView(ctx.lang, await branchService.getAllBranches(), year, month, 'ps_branch');
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
@@ -121,7 +121,7 @@ export function payrollController(bot: Bot<MyContext>) {
             await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
             return;
         }
-        const { year, month } = previousMonthSeoul();
+        const { year, month } = reportMonthSeoul();
         await payrollService.reopen(new Types.ObjectId(branchId), year, month);
         await ctx.answerCallbackQuery({ text: t(ctx.lang, 'ps.reopened'), show_alert: true });
         const view = await statusFor(ctx.lang, new Types.ObjectId(branchId));

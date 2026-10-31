@@ -38,7 +38,7 @@ Use a separate bot token and a separate database for development and production.
 
 - **Registration:** language, phone, then "which branch were you invited to?". The branch's managers confirm (bosses and
   admins if the branch has none). Until confirmed an employee can only use `/start`.
-- **Monthly report:** the employee downloads last month's Excel, may edit the From / To times, and sends it back.
+- **Monthly report:** at the end of the month (from the 25th on, see `REPORT_CUTOFF_DAY`) the employee downloads this month's Excel; before the 25th it is last month's, for anyone who is late. The employee may edit the From / To times and send it back.
   A report without edits is submitted at once. Edits wait for a manager's approval and are applied only then.
   When every employee of a branch is approved the month is closed and the bosses get the payroll report.
   A manager, boss or admin can reopen a closed month from **Payroll status**.
@@ -66,4 +66,5 @@ Shift times are stored as **Seoul wall-clock time labeled as UTC**: a check-in a
 | `BOT_TOKEN`, `MONGO_URL` | required |
 | `ADMIN_TELEGRAM_IDS` | comma separated Telegram ids that are always admins |
 | `ERROR_CHAT_ID` | Telegram chat that receives error alerts |
+| `REPORT_CUTOFF_DAY` | optional, default 25: from this day on reports are for the current month, before it for the month that just ended |
 | `DEBUG_UPDATES` | `true` logs every chat id (debugging only) |
