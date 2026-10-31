@@ -25,9 +25,10 @@ export function userPickerView(lang: Lang, users: Member[]) {
     };
 }
 
-// salary = false (the branch assistant): only the phone can be changed and pay details stay hidden
+// salary = false (the branch assistant): only name and phone can be changed and pay details stay hidden
 export function userEditView(lang: Lang, user: Member, branchName: string | null, salary = true) {
     const keyboard = new InlineKeyboard()
+        .text(t(lang, 'emp.btnName'), `edit_user:${user.telegramId},name`).row()
         .text(t(lang, 'emp.btnPhone'), `edit_user:${user.telegramId},phone`).row();
     if (salary) {
         keyboard
@@ -55,6 +56,7 @@ export function userEditView(lang: Lang, user: Member, branchName: string | null
 
 export function askEditFieldDetailView(lang: Lang, userName: string, field: string) {
     const keys = {
+        name: 'emp.ask.name',
         phone: 'emp.ask.phone',
         bankName: 'emp.ask.bankName',
         bankAccount: 'emp.ask.bankAccount',

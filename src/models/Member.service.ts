@@ -70,6 +70,14 @@ class MemberService {
         return member.toObject() as Member;
     }
 
+    // everyone who works at the branch (employees and managers), confirmed only
+    async getActiveMembersByBranch(branchId: Types.ObjectId): Promise<Member[]> {
+        return this.memberModel
+            .find({ branchId, status: MemberStatus.ACTIVE, type: { $in: [MemberType.USER, MemberType.MANAGER] } })
+            .sort({ name: 1 })
+            .lean<Member[]>();
+    }
+
     async getManagersByBranch(branchId: Types.ObjectId): Promise<Member[]> {
         return this.memberModel.find({ type: MemberType.MANAGER, branchId }).sort({ name: 1 }).lean<Member[]>();
     }

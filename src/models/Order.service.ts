@@ -94,6 +94,11 @@ class OrderService {
         ).lean<Order>();
     }
 
+    // cancel a new order (before anyone marked it ordered); null = it already moved on or was cancelled
+    async cancelNewOrder(orderId: Types.ObjectId): Promise<Order | null> {
+        return this.orderModel.findOneAndDelete({ _id: orderId, status: OrderStatus.ORDER }).lean<Order>();
+    }
+
     async markArrived(orderId: Types.ObjectId, memberId: Types.ObjectId): Promise<Order | null> {
         return this.orderModel.findOneAndUpdate(
             { _id: orderId, status: OrderStatus.ORDERED },

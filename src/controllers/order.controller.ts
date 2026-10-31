@@ -6,9 +6,10 @@ import BranchService from '../models/Branch.service';
 import ProductService from '../models/Product.service';
 import OrderService from '../models/Order.service';
 import { ProductCategory } from '../libs/enums/product.enum';
-import { allLabels, t } from '../libs/i18n';
+import { DEFAULT_LANG, allLabels, t } from '../libs/i18n';
 import { Order } from '../libs/types/order';
-import { hasManagerPermission, isBossOrAdmin, isManagerOf } from '../libs/utils/permission';
+import { OrderStatus } from '../libs/enums/order.enum';
+import { hasManagerPermission, isAssistant, isBossOrAdmin, isManagerOf } from '../libs/utils/permission';
 import { productCardView, orderCategoryView, orderControlView, orderMessageView, orderReviewView, storageMenuView } from '../views/index';
 
 const memberService = new MemberService();
@@ -278,6 +279,39 @@ export function orderController(bot: Bot<MyContext>) {
             return;
         }
         await ctx.answerCallbackQuery();
+    });
+
+    // 6b. Cancel a new order from the group: the person who placed it, the branch's main
+    // manager, a boss or an admin; only while nobody has marked it ordered yet
+    bot.callbackQuery(/^order_cancel_new:/, async (ctx) => {
+        const member = await memberService.getMemberByTelegramId(ctx.from.id);
+        const order = await orderService.getById(ctx.callbackQuery.data.split(':')[1]);
+        if (!member || !order || order.status !== OrderStatus.ORDER) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'order.alreadyChanged') });
+            return;
+        }
+        const allowed = isBossOrAdmin(member)
+            || member._id.equals(order.requestedBy)
+            || (isManagerOf(member, order.branchId.toString()) && !isAssistant(member));
+        if (!allowed) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'order.cantCancel'), show_alert: true });
+            return;
+        }
+        const cancelled = await orderService.cancelNewOrder(order._id); // atomic: loses to a tap on "ordered"
+        if (!cancelled) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'order.alreadyChanged') });
+            return;
+        }
+        await ctx.answerCallbackQuery();
+        await ctx.deleteMessage().catch(() => {});
+        if (!cancelled.requestedBy.equals(member._id)) {
+            const requester = await memberService.getMemberById(cancelled.requestedBy);
+            if (requester) {
+                await ctx.api.sendMessage(requester.telegramId, t(requester.language ?? DEFAULT_LANG, 'order.cancelledNotice', {
+                    name: cancelled.items[0]?.name ?? '', by: member.name,
+                })).catch(() => {});
+            }
+        }
     });
 
     // 7. Manager of that branch: ORDERED -> ARRIVED

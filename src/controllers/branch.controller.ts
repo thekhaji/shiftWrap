@@ -162,10 +162,8 @@ export function branchController(bot: Bot<MyContext>) {
             await ctx.answerCallbackQuery({ text: errorText(ctx.lang, Message.MANAGER_LIMIT), show_alert: true });
             return;
         }
-        const onBranch = new Set(managers.map(m => m.telegramId));
-        const candidates = (await memberService.getAllMembers())
-            .filter(m => (m.type === MemberType.USER || m.type === MemberType.MANAGER) && !onBranch.has(m.telegramId))
-            .sort((a, b) => a.name.localeCompare(b.name));
+        // only this branch's own employees; managers and assistants already hold a seat
+        const candidates = (await memberService.getActiveMembersByBranch(branch._id)).filter(m => m.type === MemberType.USER);
         if (candidates.length === 0) {
             await ctx.answerCallbackQuery({ text: t(ctx.lang, 'mgr.noCandidates'), show_alert: true });
             return;
@@ -184,7 +182,7 @@ export function branchController(bot: Bot<MyContext>) {
         }
         const branch = await branchService.getBranchById(new Types.ObjectId(branchId));
         const target = await memberService.getMemberByTelegramId(Number(telegramId));
-        if (!branch || !target || isBossOrAdmin(target)) {
+        if (!branch || !target || isBossOrAdmin(target) || target.branchId?.toString() !== branch._id.toString()) {
             await ctx.answerCallbackQuery({ text: t(ctx.lang, 'mgr.notFound'), show_alert: true });
             return;
         }
@@ -339,9 +337,8 @@ export function branchController(bot: Bot<MyContext>) {
             await ctx.answerCallbackQuery({ text: errorText(ctx.lang, Message.MANAGER_LIMIT), show_alert: true });
             return;
         }
-        const candidates = (await memberService.getAllMembers())
-            .filter(m => m.type === MemberType.USER || (m.type === MemberType.MANAGER && m.branchId?.toString() !== branch._id.toString()))
-            .sort((a, b) => a.name.localeCompare(b.name));
+        // only this branch's own employees; managers and assistants already hold a seat
+        const candidates = (await memberService.getActiveMembersByBranch(branch._id)).filter(m => m.type === MemberType.USER);
         if (candidates.length === 0) {
             await ctx.answerCallbackQuery({ text: t(ctx.lang, 'mgr.noCandidates'), show_alert: true });
             return;
@@ -356,7 +353,7 @@ export function branchController(bot: Bot<MyContext>) {
         const branch = await adminBranch(ctx, branchId);
         if (!branch) return;
         const target = await memberService.getMemberByTelegramId(Number(telegramId));
-        if (!target || isBossOrAdmin(target)) {
+        if (!target || isBossOrAdmin(target) || target.branchId?.toString() !== branch._id.toString()) {
             await ctx.answerCallbackQuery({ text: t(ctx.lang, 'mgr.notFound'), show_alert: true });
             return;
         }
@@ -401,19 +398,24 @@ export function branchController(bot: Bot<MyContext>) {
         return result;
     }
 
+    // chat ids already serving any branch, as its order group or its cleaning group
+    async function assignedGroupIds(): Promise<Set<number>> {
+        const ids = new Set<number>();
+        for (const b of await branchService.getAllBranches()) {
+            if (b.orderGroupId !== undefined) ids.add(b.orderGroupId);
+            if (b.cleaningGroupId !== undefined) ids.add(b.cleaningGroupId);
+        }
+        return ids;
+    }
+
     async function showGroupPicker(ctx: MyContext, branchId: string, kind: GroupKind, toast?: string) {
         const branch = await adminBranch(ctx, branchId);
         if (!branch) return;
         await ctx.answerCallbackQuery(toast ? { text: toast } : undefined);
         const names = await groupNames(branch);
-        let groups = await adminGroups(ctx);
-        if (kind === 'o') {
-            // an order group has its own topics, so one group can't serve two branches
-            const used = new Set((await branchService.getAllBranches())
-                .filter(b => b._id.toString() !== branchId && b.orderGroupId !== undefined)
-                .map(b => b.orderGroupId));
-            groups = groups.filter(g => !used.has(g.chatId));
-        }
+        // only groups nobody uses yet: a group serves one branch in one role
+        const used = await assignedGroupIds();
+        const groups = (await adminGroups(ctx)).filter(g => !used.has(g.chatId));
         const view = branchGroupPickerView(ctx.lang, branch, kind, kind === 'o' ? names.order : names.cleaning, groups);
         await ctx.editMessageText(view.text, { reply_markup: view.keyboard }).catch(() => {});
     }
@@ -445,7 +447,9 @@ export function branchController(bot: Bot<MyContext>) {
         if (!branch) return;
         const chatId = Number(chatIdText);
         // only groups the bot is really an admin in can be picked
-        if (!(await adminGroups(ctx)).some(g => g.chatId === chatId)) {
+        // and that no branch uses yet (the picker may be showing an old list)
+        const used = await assignedGroupIds();
+        if (used.has(chatId) || !(await adminGroups(ctx)).some(g => g.chatId === chatId)) {
             await showGroupPicker(ctx, branchId, kind);
             return;
         }

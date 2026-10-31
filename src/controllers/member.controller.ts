@@ -16,12 +16,20 @@ const memberService = new MemberService();
 const branchService = new BranchService();
 const inviteService = new InviteService();
 
+const MAX_NAME_LENGTH = 100;
+
 function isEditableField(field: string): field is EditableMemberField {
     return (EDITABLE_MEMBER_FIELDS as readonly string[]).includes(field);
 }
 
 function canManageEmployees(member: Member): boolean {
     return hasManagerPermission(member) || isBossOrAdmin(member);
+}
+
+// bosses and admins edit anyone; a manager or assistant only people of their own branch
+function canEditMember(actor: Member, target: Member): boolean {
+    if (isBossOrAdmin(actor)) return true;
+    return !!actor.branchId && target.branchId?.toString() === actor.branchId.toString();
 }
 
 export function memberController(bot: Bot<MyContext>) {
@@ -133,7 +141,9 @@ export function memberController(bot: Bot<MyContext>) {
             return;
         }
 
-        const users = await memberService.getAllMembers();
+        const users = isBossOrAdmin(actor)
+            ? await memberService.getAllMembers()
+            : await memberService.getActiveMembersByBranch(actor.branchId!);
         const view = userPickerView(ctx.lang, users);
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
@@ -150,7 +160,7 @@ export function memberController(bot: Bot<MyContext>) {
 
         const userTgId = ctx.callbackQuery.data.split(":")[1];
         const member = await memberService.getMemberByTelegramId(Number(userTgId));
-        if (!member) return;
+        if (!member || !canEditMember(actor, member)) return;
 
         const branch = member.branchId ? await branchService.getBranchById(member.branchId) : undefined;
         const view = await userEditView(ctx.lang, member, branch?.name || null, hasSalaryAccess(actor));
@@ -169,14 +179,14 @@ export function memberController(bot: Bot<MyContext>) {
 
         const [telegramId, field] = ctx.callbackQuery.data.split(":")[1].split(",");
         if (!isEditableField(field)) return;
-        // the branch assistant may change phone numbers only, never pay or bank details
-        if (field !== "phone" && !hasSalaryAccess(actor)) {
+        // the branch assistant may change names and phone numbers only, never pay or bank details
+        if (field !== "phone" && field !== "name" && !hasSalaryAccess(actor)) {
             await ctx.reply(t(ctx.lang, 'common.noPermission'));
             return;
         }
 
         const member = await memberService.getMemberByTelegramId(Number(telegramId));
-        if (!member) return;
+        if (!member || !canEditMember(actor, member)) return;
 
         // Remember who/what we're waiting on so the message:text handler below
         // knows how to interpret the manager's next message.
@@ -210,6 +220,11 @@ export function memberController(bot: Bot<MyContext>) {
         const rawValue = ctx.message.text.trim();
         if (!rawValue) {
             await ctx.reply(t(ctx.lang, 'emp.valueEmpty'));
+            return;
+        }
+
+        if (field === "name" && rawValue.length > MAX_NAME_LENGTH) {
+            await ctx.reply(t(ctx.lang, 'emp.nameTooLong', { max: MAX_NAME_LENGTH }));
             return;
         }
 

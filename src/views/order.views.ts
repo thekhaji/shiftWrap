@@ -76,7 +76,8 @@ export function orderMessageView(order: Order, products: Product[], requesterNam
             const link = byId.get(item.productId.toString())?.orderLink;
             if (link) keyboard.url(`🔗 ${item.name}`, link).row();
         }
-        keyboard.text('✅ Buyurtma qilindi', `order_ordered:${order._id.toString()}`);
+        keyboard.text('✅ Buyurtma qilindi', `order_ordered:${order._id.toString()}`).row();
+        keyboard.text('❌ Bekor qilish', `order_cancel_new:${order._id.toString()}`);
     } else if (order.status === OrderStatus.ORDERED) {
         keyboard.text('📥 Qabul qilindi', `order_received:${order._id.toString()}`);
     }

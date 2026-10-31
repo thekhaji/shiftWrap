@@ -46,5 +46,5 @@ export interface MemberManagerUpdate {
 
 // The subset of MemberManagerUpdate collected via free-text prompts (the "✍️ type a new
 // value" flow). branchId is deliberately excluded — it's set via a branch picker, not text.
-export const EDITABLE_MEMBER_FIELDS = ["phone", "bankName", "bankAccount", "hourlyRate"] as const;
+export const EDITABLE_MEMBER_FIELDS = ["name", "phone", "bankName", "bankAccount", "hourlyRate"] as const;
 export type EditableMemberField = typeof EDITABLE_MEMBER_FIELDS[number];
