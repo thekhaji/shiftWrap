@@ -35,6 +35,34 @@ function canSubmit(member: Member | null): member is Member {
         && (member.type === MemberType.USER || member.type === MemberType.MANAGER);
 }
 
+// when the last employee is approved the branch becomes ready and bosses are told, once
+export async function checkReady(api: Api, branchId: Types.ObjectId, branchName: string, year: number, month: number) {
+    const required = await attendanceService.getMemberIdsForBranchAndMonth(branchId, year, month);
+    if (await payrollService.markReadyIfComplete(branchId, year, month, required)) {
+        await notifyBossesReady(api, branchName, branchId, required, year, month);
+    }
+}
+
+// every employee of the branch has submitted: bosses and admins get the payroll report
+async function notifyBossesReady(api: Api, branchName: string, branchId: Types.ObjectId, memberIds: Types.ObjectId[], year: number, month: number) {
+    const members = await memberService.getMembersByIds(memberIds);
+    const shiftsByMember = new Map<string, Attendance[]>();
+    await Promise.all(members.map(async (m) => {
+        shiftsByMember.set(m._id.toString(), await attendanceService.getShiftsForMemberBranchAndMonth(m._id, branchId, year, month));
+    }));
+    const file = await reportService.generateBranchReportFile(members, shiftsByMember, year, month);
+    const total = (await attendanceService.getMonthlyPayroll(year, branchId))[month - 1];
+
+    for (const boss of await memberService.getBossesAndAdmins()) {
+        const lang = boss.language ?? DEFAULT_LANG;
+        const caption = t(lang, 'sub.ready', {
+            branch: branchName, count: members.length, month: monthNames(lang)[month - 1], year, amount: formatMoney(total),
+        });
+        await api.sendDocument(boss.telegramId, new InputFile(file, `${branchName}_${year}-${month}.xlsx`), { caption })
+            .catch((err) => console.error(`payroll ready notice to ${boss.telegramId} failed:`, err));
+    }
+}
+
 export function submissionController(bot: Bot<MyContext>) {
 
     async function startSubmission(ctx: MyContext, member: Member, branchId: Types.ObjectId, year: number, month: number) {
@@ -258,14 +286,6 @@ export function submissionController(bot: Bot<MyContext>) {
         }
     }
 
-    // when the last employee is approved the branch becomes ready and bosses are told, once
-    async function checkReady(api: Api, branchId: Types.ObjectId, branchName: string, year: number, month: number) {
-        const required = await attendanceService.getMemberIdsForBranchAndMonth(branchId, year, month);
-        if (await payrollService.markReadyIfComplete(branchId, year, month, required)) {
-            await notifyBossesReady(api, branchName, branchId, required, year, month);
-        }
-    }
-
     // a manager (not the submitter), boss or admin answers an edit request
     bot.callbackQuery(/^sub_(ok|no):/, async (ctx) => {
         const approve = ctx.callbackQuery.data.startsWith('sub_ok:');
@@ -306,23 +326,4 @@ export function submissionController(bot: Bot<MyContext>) {
         }
     });
 
-    // every employee of the branch has submitted: bosses and admins get the payroll report
-    async function notifyBossesReady(api: Api, branchName: string, branchId: Types.ObjectId, memberIds: Types.ObjectId[], year: number, month: number) {
-        const members = await memberService.getMembersByIds(memberIds);
-        const shiftsByMember = new Map<string, Attendance[]>();
-        await Promise.all(members.map(async (m) => {
-            shiftsByMember.set(m._id.toString(), await attendanceService.getShiftsForMemberBranchAndMonth(m._id, branchId, year, month));
-        }));
-        const file = await reportService.generateBranchReportFile(members, shiftsByMember, year, month);
-        const total = (await attendanceService.getMonthlyPayroll(year, branchId))[month - 1];
-
-        for (const boss of await memberService.getBossesAndAdmins()) {
-            const lang = boss.language ?? DEFAULT_LANG;
-            const caption = t(lang, 'sub.ready', {
-                branch: branchName, count: members.length, month: monthNames(lang)[month - 1], year, amount: formatMoney(total),
-            });
-            await api.sendDocument(boss.telegramId, new InputFile(file, `${branchName}_${year}-${month}.xlsx`), { caption })
-                .catch((err) => console.error(`payroll ready notice to ${boss.telegramId} failed:`, err));
-        }
-    }
 }

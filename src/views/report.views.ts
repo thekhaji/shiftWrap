@@ -38,9 +38,11 @@ export function approvalRequestView(
 
 export function payrollStatusView(
     lang: Lang,
-    d: { branchId: string; branch: string; month: number; year: number; lines: string[]; done: number; total: number; closed: boolean }
+    d: { branchId: string; branch: string; month: number; year: number; lines: string[]; done: number; total: number; closed: boolean; missing?: { id: string; name: string }[] }
 ) {
     const keyboard = new InlineKeyboard();
+    // people who have not submitted: the manager can submit their recorded hours for them
+    if (!d.closed) for (const m of d.missing ?? []) keyboard.text(t(lang, 'ps.forceBtn', { name: m.name }), `ps_force:${d.branchId},${m.id}`).row();
     if (d.closed) keyboard.text(t(lang, 'ps.reopen'), `ps_reopen:${d.branchId}`);
     const state = t(lang, d.closed ? 'ps.closed' : 'ps.open');
     const list = d.lines.length ? d.lines.join('\n') : t(lang, 'ps.empty');

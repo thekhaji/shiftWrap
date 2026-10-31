@@ -22,8 +22,9 @@ class PayrollService {
     async saveSubmission(data: {
         memberId: Types.ObjectId; branchId: Types.ObjectId; year: number; month: number;
         status: 'PENDING' | 'APPROVED'; plan: ShiftPlan;
+        decidedBy?: Types.ObjectId;   // a manager submitted it for the employee
     }): Promise<Submission> {
-        const { memberId, branchId, year, month, status, plan } = data;
+        const { memberId, branchId, year, month, status, plan, decidedBy } = data;
         const set: Record<string, unknown> = {
             status,
             submittedAt: new Date(),
@@ -32,6 +33,12 @@ class PayrollService {
             changeLines: plan.changeLines,
         };
         const unset: Record<string, ''> = { decidedBy: '', decidedAt: '' };
+        if (decidedBy) {
+            set.decidedBy = decidedBy;
+            set.decidedAt = new Date();
+            delete unset.decidedBy;
+            delete unset.decidedAt;
+        }
         if (status === 'PENDING') set.plan = plan; // only edits waiting for approval are kept
         else unset.plan = '';
 

@@ -8,7 +8,9 @@ import PayrollService from '../models/Payroll.service';
 import { Member } from '../libs/types/member';
 import { hasManagerPermission, hasSalaryAccess, isBossOrAdmin, isSalaryManagerOf } from '../libs/utils/permission';
 import { reportMonthSeoul } from '../libs/utils/date';
-import { allLabels, t } from '../libs/i18n';
+import { allLabels, DEFAULT_LANG, monthNames, t } from '../libs/i18n';
+import { buildPlan } from '../libs/utils/reportEdit';
+import { checkReady } from './submission.controller';
 import { approvalRequestView, branchPickerView, joinRequestView, payrollStatusView } from '../views/index';
 
 const attendanceService = new AttendanceService();
@@ -69,7 +71,8 @@ export function payrollController(bot: Bot<MyContext>) {
     });
 
     // who has submitted last month's report, and whether the branch is closed
-    async function statusFor(lang: MyContext['lang'], branchId: Types.ObjectId) {
+    // viewerId: the person looking at it, who is never offered a button to submit their own report
+    async function statusFor(lang: MyContext['lang'], branchId: Types.ObjectId, viewerId?: Types.ObjectId) {
         const { year, month } = reportMonthSeoul();
         const branch = await branchService.getBranchById(branchId);
         if (!branch) return null;
@@ -80,9 +83,12 @@ export function payrollController(bot: Bot<MyContext>) {
         const icon = { APPROVED: '✅', PENDING: '⏳', REJECTED: '❌' } as const;
         const lines = members.map(m => `${icon[statuses.get(m._id.toString()) ?? 'REJECTED']} ${m.name}`);
         const done = members.filter(m => statuses.get(m._id.toString()) === 'APPROVED').length;
+        const missing = members
+            .filter(m => (statuses.get(m._id.toString()) ?? 'REJECTED') === 'REJECTED' && !(viewerId && m._id.equals(viewerId)))
+            .map(m => ({ id: m._id.toString(), name: m.name }));
         return payrollStatusView(lang, {
             branchId: branchId.toString(), branch: branch.name, month, year,
-            lines, done, total: members.length, closed: await payrollService.isClosed(branchId, year, month),
+            lines, done, total: members.length, closed: await payrollService.isClosed(branchId, year, month), missing,
         });
     }
 
@@ -94,7 +100,7 @@ export function payrollController(bot: Bot<MyContext>) {
             return;
         }
         if (!isBossOrAdmin(actor)) {
-            const view = await statusFor(ctx.lang, actor.branchId!);
+            const view = await statusFor(ctx.lang, actor.branchId!, actor._id);
             if (view) await ctx.reply(view.text, { reply_markup: view.keyboard });
             return;
         }
@@ -109,7 +115,7 @@ export function payrollController(bot: Bot<MyContext>) {
         const branchId = ctx.callbackQuery.data.split(':')[1].split(',')[0];
         // callback data is client-controlled, so check the permission for the requested branch
         if (!actor || !Types.ObjectId.isValid(branchId) || !(isBossOrAdmin(actor) || isSalaryManagerOf(actor, branchId))) return;
-        const view = await statusFor(ctx.lang, new Types.ObjectId(branchId));
+        const view = await statusFor(ctx.lang, new Types.ObjectId(branchId), actor._id);
         if (view) await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
 
@@ -124,7 +130,63 @@ export function payrollController(bot: Bot<MyContext>) {
         const { year, month } = reportMonthSeoul();
         await payrollService.reopen(new Types.ObjectId(branchId), year, month);
         await ctx.answerCallbackQuery({ text: t(ctx.lang, 'ps.reopened'), show_alert: true });
-        const view = await statusFor(ctx.lang, new Types.ObjectId(branchId));
+        const view = await statusFor(ctx.lang, new Types.ObjectId(branchId), actor._id);
         if (view) await ctx.editMessageText(view.text, { reply_markup: view.keyboard }).catch(() => {});
+    });
+
+    // Someone has not submitted: their manager (or a boss/admin) submits the hours as recorded,
+    // so one forgetful person cannot hold up the whole branch's payroll.
+    bot.callbackQuery(/^ps_force:/, async (ctx) => {
+        const actor = await memberService.getMemberByTelegramId(ctx.from.id);
+        const [branchId, memberId] = ctx.callbackQuery.data.split(':')[1].split(',');
+        // callback data is client-controlled: re-check everything
+        if (!actor || !Types.ObjectId.isValid(branchId) || !Types.ObjectId.isValid(memberId)
+            || !(isBossOrAdmin(actor) || isSalaryManagerOf(actor, branchId)) || actor._id.equals(memberId)) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
+            return;
+        }
+        const branchOid = new Types.ObjectId(branchId);
+        const memberOid = new Types.ObjectId(memberId);
+        const { year, month } = reportMonthSeoul();
+
+        const redraw = async () => {
+            const view = await statusFor(ctx.lang, branchOid, actor._id);
+            if (view) await ctx.editMessageText(view.text, { reply_markup: view.keyboard }).catch(() => {});
+        };
+
+        const employee = await memberService.getMemberById(memberOid);
+        const required = await attendanceService.getMemberIdsForBranchAndMonth(branchOid, year, month);
+        const status = (await payrollService.getStatuses(branchOid, year, month)).get(memberId);
+        const alreadyHandled = !employee || !required.some(id => id.equals(memberOid))
+            || (status !== undefined && status !== 'REJECTED') || await payrollService.isClosed(branchOid, year, month);
+        if (alreadyHandled) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'reg.alreadyHandled'), show_alert: true });
+            await redraw();
+            return;
+        }
+
+        const shifts = await attendanceService.getShiftsForMemberBranchAndMonth(memberOid, branchOid, year, month);
+        if (shifts.some(s => !s.checkOut)) {
+            // an open shift is not in the hours: the employee has to fix it themselves
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'ps.forceOpenShift', { name: employee.name }), show_alert: true });
+            return;
+        }
+        const result = buildPlan([], shifts, year, month, employee.hourlyRate);
+        if ('errors' in result) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.errorShort'), show_alert: true });
+            return;
+        }
+
+        await payrollService.saveSubmission({ memberId: memberOid, branchId: branchOid, year, month, status: 'APPROVED', plan: result.plan, decidedBy: actor._id });
+        const total = hours(result.plan.minutesAfter);
+        await ctx.answerCallbackQuery({ text: t(ctx.lang, 'ps.forced', { name: employee.name, hours: total }), show_alert: true });
+
+        const lang = employee.language ?? DEFAULT_LANG;
+        await ctx.api.sendMessage(employee.telegramId, t(lang, 'ps.forcedEmployee', { month: monthNames(lang)[month - 1], year, hours: total }))
+            .catch((err) => console.error(`forced submission notice to ${employee.telegramId} failed:`, err));
+
+        await redraw();
+        const branch = await branchService.getBranchById(branchOid);
+        await checkReady(ctx.api, branchOid, branch?.name ?? '', year, month);
     });
 }

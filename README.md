@@ -41,6 +41,8 @@ Use a separate bot token and a separate database for development and production.
 - **Monthly report:** at the end of the month (from the 25th on, see `REPORT_CUTOFF_DAY`) the employee downloads this month's Excel; before the 25th it is last month's, for anyone who is late. The employee may edit the From / To times and send it back.
   A report without edits is submitted at once. Edits wait for a manager's approval and are applied only then.
   When every employee of a branch is approved the month is closed and the bosses get the payroll report.
+  If someone never submits, the main manager, a boss or an admin presses **Submit for {name}** in **Payroll status**:
+  their recorded hours are submitted as they are (not possible while a shift has no check-out) and the employee is told.
   A manager, boss or admin can reopen a closed month from **Payroll status**.
 - **Manager and assistant:** a manager without a role (created before assistants existed) counts as the main manager.
   Report-edit approvals go to the main manager only; with none, to the bosses and admins.
