@@ -179,6 +179,13 @@ export const en: Record<TranslationKey, string> = {
     'emp.valueEmpty': 'The value cannot be empty. Please try again.',
     'emp.numberOnly': 'Please enter numbers only.',
     'emp.updated': 'Details updated successfully ✅',
+    'emp.pickBranch': "Which branch's employees do you want to see?",
+    'emp.noneInBranch': "This branch has no employees.",
+    'emp.btnBranch': "Change branch",
+    'emp.pickNewBranch': "Choose a new branch for {name} (now: {branch}):",
+    'emp.branchChanged': "✅ {name} was moved to {branch}.",
+    'emp.isManager': "{name} is a manager or assistant. Remove them first in Branch settings > Managers.",
+    'branch.changed': "Your branch was changed: {branch}.",
 
     'storage.title': '📦 Storage',
     'storage.order': '🛒 Place an order',

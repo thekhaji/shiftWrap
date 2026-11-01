@@ -1,5 +1,6 @@
 import { Keyboard, InlineKeyboard } from "grammy";
 import { Member } from "../libs/types/member";
+import { Branch } from "../libs/types/branch";
 import { Lang, t } from "../libs/i18n";
 
 
@@ -11,6 +12,20 @@ export function askPhoneView(lang: Lang) {
             .resized()
             .oneTime(),
     };
+}
+
+// admin: which branch's employees to look at
+export function employeeBranchPickerView(lang: Lang, branches: Branch[]) {
+    const keyboard = new InlineKeyboard();
+    for (const branch of branches) keyboard.text(branch.name, `emp_branch:${branch._id.toString()}`).row();
+    return { text: t(lang, 'emp.pickBranch'), keyboard };
+}
+
+// admin: choose the branch an employee moves to
+export function branchMovePickerView(lang: Lang, user: Member, branches: Branch[], currentBranch: string) {
+    const keyboard = new InlineKeyboard();
+    for (const branch of branches) keyboard.text(branch.name, `emp_mvb:${user.telegramId},${branch._id.toString()}`).row();
+    return { text: t(lang, 'emp.pickNewBranch', { name: user.name, branch: currentBranch }), keyboard };
 }
 
 export function userPickerView(lang: Lang, users: Member[]) {
@@ -26,7 +41,7 @@ export function userPickerView(lang: Lang, users: Member[]) {
 }
 
 // salary = false (the branch assistant): only name and phone can be changed and pay details stay hidden
-export function userEditView(lang: Lang, user: Member, branchName: string | null, salary = true) {
+export function userEditView(lang: Lang, user: Member, branchName: string | null, salary = true, canMoveBranch = false) {
     const keyboard = new InlineKeyboard()
         .text(t(lang, 'emp.btnName'), `edit_user:${user.telegramId},name`).row()
         .text(t(lang, 'emp.btnPhone'), `edit_user:${user.telegramId},phone`).row();
@@ -36,6 +51,8 @@ export function userEditView(lang: Lang, user: Member, branchName: string | null
             .text(t(lang, 'emp.btnBankAccount'), `edit_user:${user.telegramId},bankAccount`).row()
             .text(t(lang, 'emp.btnRate'), `edit_user:${user.telegramId},hourlyRate`).row();
     }
+
+    if (canMoveBranch) keyboard.text(t(lang, 'emp.btnBranch'), `emp_mv:${user.telegramId}`).row();
 
     const unknown = t(lang, 'common.unknown');
     if (!salary) {

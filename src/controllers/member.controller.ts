@@ -5,12 +5,13 @@ import BranchService from "../models/Branch.service";
 import { adminTelegramIds } from "../libs/utils/config";
 import InviteService from "../models/Invite.service";
 import { askBranch, sendPendingState } from "./registration.controller";
+import { Types } from "mongoose";
 import { MemberStatus, MemberType } from "../libs/enums/member.enum";
-import { askPhoneView, mainMenuView, errorView, userEditView, userPickerView, askEditFieldDetailView, languagePickerView } from "../views/index";
+import { askPhoneView, mainMenuView, errorView, userEditView, userPickerView, askEditFieldDetailView, languagePickerView, employeeBranchPickerView, branchMovePickerView } from "../views/index";
 import { allLabels, errorText, t } from "../libs/i18n";
 import Errors, { Message } from "../libs/Errors";
 import { Member, MemberInput, MemberManagerUpdate, EditableMemberField, EDITABLE_MEMBER_FIELDS } from "../libs/types/member";
-import { hasManagerPermission, hasSalaryAccess, isBossOrAdmin } from "../libs/utils/permission";
+import { hasManagerPermission, hasSalaryAccess, isAdmin, isBossOrAdmin } from "../libs/utils/permission";
 
 const memberService = new MemberService();
 const branchService = new BranchService();
@@ -141,11 +142,44 @@ export function memberController(bot: Bot<MyContext>) {
             return;
         }
 
-        const users = isBossOrAdmin(actor)
-            ? await memberService.getAllMembers()
-            : await memberService.getActiveMembersByBranch(actor.branchId!);
+        if (isBossOrAdmin(actor)) {
+            // no branch of their own: first choose whose employees to look at
+            const branches = await branchService.getAllBranches();
+            if (branches.length === 0) {
+                await ctx.reply(t(ctx.lang, 'branch.none'));
+                return;
+            }
+            const branchView = employeeBranchPickerView(ctx.lang, branches);
+            await ctx.reply(branchView.text, { reply_markup: branchView.keyboard });
+            return;
+        }
+
+        const users = await memberService.getActiveMembersByBranch(actor.branchId!);
         const view = userPickerView(ctx.lang, users);
         await ctx.reply(view.text, { reply_markup: view.keyboard });
+    });
+
+    // admin/boss: the employees of the chosen branch
+    bot.callbackQuery(/^emp_branch:/, async (ctx) => {
+        const actor = await memberService.getMemberByTelegramId(ctx.from.id);
+        const branchId = ctx.callbackQuery.data.split(":")[1];
+        if (!actor || !isBossOrAdmin(actor) || !Types.ObjectId.isValid(branchId)) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
+            return;
+        }
+        const branch = await branchService.getBranchById(new Types.ObjectId(branchId));
+        if (!branch) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.branchNotFound') });
+            return;
+        }
+        const users = await memberService.getActiveMembersByBranch(branch._id);
+        if (users.length === 0) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'emp.noneInBranch'), show_alert: true });
+            return;
+        }
+        await ctx.answerCallbackQuery();
+        const view = userPickerView(ctx.lang, users);
+        await ctx.reply(`${branch.name}\n${view.text}`, { reply_markup: view.keyboard });
     });
 
     bot.callbackQuery(/^user_picker:/, async (ctx) => {
@@ -163,7 +197,7 @@ export function memberController(bot: Bot<MyContext>) {
         if (!member || !canEditMember(actor, member)) return;
 
         const branch = member.branchId ? await branchService.getBranchById(member.branchId) : undefined;
-        const view = await userEditView(ctx.lang, member, branch?.name || null, hasSalaryAccess(actor));
+        const view = await userEditView(ctx.lang, member, branch?.name || null, hasSalaryAccess(actor), isAdmin(actor));
         await ctx.reply(view.text, { reply_markup: view.keyboard });
     });
 
@@ -197,6 +231,53 @@ export function memberController(bot: Bot<MyContext>) {
 
         const view = askEditFieldDetailView(ctx.lang, member.name, field);
         await ctx.reply(view.text, { reply_markup: view.keyboard });
+    });
+
+    // admin: pick a new branch for an employee
+    bot.callbackQuery(/^emp_mv:/, async (ctx) => {
+        const actor = await memberService.getMemberByTelegramId(ctx.from.id);
+        const target = await memberService.getMemberByTelegramId(Number(ctx.callbackQuery.data.split(":")[1]));
+        if (!actor || !isAdmin(actor) || !target || isBossOrAdmin(target)) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
+            return;
+        }
+        if (target.type === MemberType.MANAGER) {
+            // a manager's seat belongs to the old branch: it has to be removed there first
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'emp.isManager', { name: target.name }), show_alert: true });
+            return;
+        }
+        const branches = (await branchService.getAllBranches()).filter(b => b._id.toString() !== target.branchId?.toString());
+        if (branches.length === 0) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'branch.none'), show_alert: true });
+            return;
+        }
+        const current = target.branchId ? await branchService.getBranchById(target.branchId) : undefined;
+        await ctx.answerCallbackQuery();
+        const view = branchMovePickerView(ctx.lang, target, branches, current?.name || t(ctx.lang, 'common.unknown'));
+        await ctx.reply(view.text, { reply_markup: view.keyboard });
+    });
+
+    bot.callbackQuery(/^emp_mvb:/, async (ctx) => {
+        const actor = await memberService.getMemberByTelegramId(ctx.from.id);
+        const [telegramId, branchId] = ctx.callbackQuery.data.split(":")[1].split(",");
+        const target = await memberService.getMemberByTelegramId(Number(telegramId));
+        // callback data is client-controlled: re-check everything
+        if (!actor || !isAdmin(actor) || !target || isBossOrAdmin(target) || !Types.ObjectId.isValid(branchId)) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
+            return;
+        }
+        if (target.type === MemberType.MANAGER) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'emp.isManager', { name: target.name }), show_alert: true });
+            return;
+        }
+        const branch = await branchService.getBranchById(new Types.ObjectId(branchId));
+        if (!branch) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.branchNotFound') });
+            return;
+        }
+        await memberService.updateMember(target.telegramId, { branchId: branch._id });
+        await ctx.answerCallbackQuery();
+        await ctx.editMessageText(t(ctx.lang, 'emp.branchChanged', { name: target.name, branch: branch.name })).catch(() => {});
     });
 
     bot.on("message:text", async (ctx, next) => {
@@ -245,7 +326,7 @@ export function memberController(bot: Bot<MyContext>) {
             await ctx.reply(t(ctx.lang, 'emp.updated'));
             const branch = updated.branchId ? await branchService.getBranchById(updated.branchId) : undefined;
             const editor = ctx.from ? await memberService.getMemberByTelegramId(ctx.from.id) : null;
-            const view = await userEditView(ctx.lang, updated, branch?.name || null, !!editor && hasSalaryAccess(editor));
+            const view = await userEditView(ctx.lang, updated, branch?.name || null, !!editor && hasSalaryAccess(editor), !!editor && isAdmin(editor));
             await ctx.reply(view.text, { reply_markup: view.keyboard });
         } catch (err) {
             if (err instanceof Errors) {

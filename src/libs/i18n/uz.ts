@@ -188,6 +188,13 @@ export const uz = {
     'emp.valueEmpty': "Qiymat bo'sh bo'lishi mumkin emas. Qaytadan urinib ko'ring.",
     'emp.numberOnly': 'Iltimos, faqat raqam kiriting.',
     'emp.updated': "Ma'lumot muvaffaqiyatli yangilandi ✅",
+    'emp.pickBranch': "Qaysi filial xodimlarini ko'rmoqchisiz?",
+    'emp.noneInBranch': "Bu filialda xodimlar yo'q.",
+    'emp.btnBranch': "Filialini o'zgartirish",
+    'emp.pickNewBranch': "{name} uchun yangi filialni tanlang (hozir: {branch}):",
+    'emp.branchChanged': "✅ {name} {branch} filialiga ko'chirildi.",
+    'emp.isManager': "{name} boshqaruvchi yoki yordamchi. Avval uni Filial sozlamalari > Boshqaruvchilar bo'limidan olib tashlang.",
+    'branch.changed': "Sizning filialingiz o'zgartirildi: {branch}.",
 
     // ---- storage / orders ----
     'storage.title': '📦 Ombor',

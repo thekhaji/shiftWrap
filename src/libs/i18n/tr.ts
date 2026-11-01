@@ -179,6 +179,13 @@ export const tr: Record<TranslationKey, string> = {
     'emp.valueEmpty': 'Değer boş olamaz. Lütfen tekrar deneyin.',
     'emp.numberOnly': 'Lütfen yalnızca rakam girin.',
     'emp.updated': 'Bilgi başarıyla güncellendi ✅',
+    'emp.pickBranch': "Hangi şubenin çalışanlarını görmek istiyorsunuz?",
+    'emp.noneInBranch': "Bu şubede çalışan yok.",
+    'emp.btnBranch': "Şubesini değiştir",
+    'emp.pickNewBranch': "{name} için yeni şubeyi seçin (şu an: {branch}):",
+    'emp.branchChanged': "✅ {name}, {branch} şubesine taşındı.",
+    'emp.isManager': "{name} müdür veya yardımcı. Önce Şube ayarları > Müdürler bölümünden kaldırın.",
+    'branch.changed': "Şubeniz değiştirildi: {branch}.",
 
     'storage.title': '📦 Depo',
     'storage.order': '🛒 Sipariş ver',

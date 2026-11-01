@@ -11,7 +11,7 @@ product ordering with the group topics, monthly reports and payroll.
 | Manager | assigned by a boss or admin (only one per branch) | everything an employee can, plus confirm employees, approve report edits, order, cleaning review, edit employee pay details, branch report, payroll, payroll status |
 | Assistant | assigned by a boss or admin (any number per branch, next to the manager) | the manager's day-to-day work: confirm employees, order, cleaning review, change phone numbers. **No pay access:** no rate / bank details, branch report, payroll, payroll status or approving report edits |
 | Boss | one-time invite link from an admin | branch reports and payroll for all branches, reopen a month |
-| Admin | `ADMIN_TELEGRAM_IDS` | branches, managers and assistants, groups, product catalog, boss invites |
+| Admin | `ADMIN_TELEGRAM_IDS` | branches, managers and assistants, groups, employees of any branch (edit details, move to another branch), product catalog, boss invites |
 
 ## Setup
 

@@ -16,6 +16,7 @@ function mainMenuKeyboard(member?: Member) {
         bossKeyboard.text(t(lang, 'menu.requests')).row();
         if (member.type === "BOSS") bossKeyboard.text(t(lang, 'menu.assignManager')).row();
         if (member.type === "ADMIN") {
+            bossKeyboard.text(t(lang, 'menu.employees')).row();
             bossKeyboard.text(t(lang, 'menu.inviteBoss')).row();
             bossKeyboard.text(t(lang, 'menu.addProduct')).row();
             bossKeyboard.text(t(lang, 'menu.branchSettings')).row();
