@@ -119,8 +119,9 @@ class ReportService {
                 const from = new Date(shift.checkIn);
 
                 if (!shift.checkOut) {
-                    const row = sheet.addRow([day, dateForDay, from, '⚠️ No check-out']);
+                    const row = sheet.addRow([day, dateForDay, timeOfDay(from), '⚠️ No check-out']);
                     row.eachCell(cell => cell.alignment = { horizontal: 'center' });
+                    row.getCell(3).numFmt = 'hh:mm';
                     continue;
                 }
 
@@ -128,10 +129,11 @@ class ReportService {
                 const minutes = Math.round((to.getTime() - from.getTime()) / 60000);
                 totalMinutes += minutes;
 
-                const row = sheet.addRow([day, dateForDay, from, to, minutes / 1440]);
+                // the time of day only, like the file employees submit: a full date-time would show the date too
+                const row = sheet.addRow([day, dateForDay, timeOfDay(from), timeOfDay(to), minutes / 1440]);
                 row.eachCell(cell => cell.alignment = { horizontal: 'center' });
-                row.getCell(3).numFmt = 'hh:mm AM/PM';
-                row.getCell(4).numFmt = 'hh:mm AM/PM';
+                row.getCell(3).numFmt = 'hh:mm';
+                row.getCell(4).numFmt = 'hh:mm';
                 row.getCell(5).numFmt = '[h]:mm';
             }
         }
