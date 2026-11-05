@@ -1,4 +1,5 @@
 import mongoose, { Schema } from 'mongoose';
+import { ExpressType } from '../libs/enums/express.enum';
 
 const branchSchema = new Schema(
     {
@@ -18,6 +19,17 @@ const branchSchema = new Schema(
         orderGroupId: {
             type: Number,
         },
+        express: {
+            type: String,
+            enum: ExpressType,   // Taksim Express or Troy Express; one branch each
+        },
+        expressGroupId: {
+            type: Number,   // the group where orders to this Express branch arrive
+        },
+        expressSupplierId: {
+            type: Schema.Types.ObjectId,   // the Express branch this branch may order from
+            ref: 'Branch',
+        },
         productIds: [{ type: Schema.Types.ObjectId, ref: 'Product' }],
         cleaningGroupId: {
             type: Number,
@@ -36,5 +48,8 @@ const branchSchema = new Schema(
     },
     { timestamps: true }
 );
+
+// one Taksim Express and one Troy Express: the database enforces it
+branchSchema.index({ express: 1 }, { unique: true, partialFilterExpression: { express: { $type: 'string' } } });
 
 export default mongoose.model('Branch', branchSchema);

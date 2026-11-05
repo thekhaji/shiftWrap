@@ -4,7 +4,7 @@ import MemberService from '../models/Member.service';
 import BranchService from '../models/Branch.service';
 import CleaningService from '../models/Cleaning.service';
 import { Member } from '../libs/types/member';
-import { CleaningPlace, CLEANING_PLACE_NAMES, CLEANING_PLACE_NAMES_TR } from '../libs/enums/cleaning.enum';
+import { CleaningPlace, CLEANING_OTHERS, CLEANING_OTHERS_KEY, CLEANING_PLACE_NAMES, CLEANING_PLACE_NAMES_TR } from '../libs/enums/cleaning.enum';
 import { MemberType } from '../libs/enums/member.enum';
 import { hasManagerPermission, isBossOrAdmin } from '../libs/utils/permission';
 import { currentWeekStartSeoul } from '../libs/utils/date';
@@ -200,12 +200,15 @@ export function cleaningController(bot: Bot<MyContext>) {
     // build the deck for one place and send it to the manager with a "submit to Boss" button
     bot.callbackQuery(/^clean_view:/, async (ctx) => {
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
-        const place = ctx.callbackQuery.data.split(':')[1];
-        if (!member || !hasManagerPermission(member) || !isPlace(place)) {
+        const key = ctx.callbackQuery.data.split(':')[1];
+        // Hall, Kitchen and Prep are one deck; Office and Home are one deck each
+        const places = key === CLEANING_OTHERS_KEY ? CLEANING_OTHERS : isPlace(key) ? [key] : null;
+        if (!member || !hasManagerPermission(member) || !places) {
             await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
             return;
         }
-        const pairs = await cleaningService.getPairs(member.branchId!, currentWeekStartSeoul(), place);
+        const pairs = (await cleaningService.getPairs(member.branchId!, currentWeekStartSeoul(), places))
+            .sort((a, b) => places.indexOf(a.place) - places.indexOf(b.place));   // grouped by place, upload order inside
         if (pairs.length === 0) {
             await ctx.answerCallbackQuery({ text: t(ctx.lang, 'clean.noPairs'), show_alert: true });
             return;
@@ -214,18 +217,20 @@ export function cleaningController(bot: Bot<MyContext>) {
 
         try {
             const branch = await branchService.getBranchById(member.branchId!);
-            const placeName = CLEANING_PLACE_NAMES[place];
+            const placeName = places.map(p => CLEANING_PLACE_NAMES[p]).join(', ');
+            const placeNameTr = places.map(p => CLEANING_PLACE_NAMES_TR[p]).join(', ');
             const dateText = seoulDateText();
             const deck = await buildCleaningPptx({
                 branchName: branch?.name ?? '—',
                 placeName,
                 dateText,
                 pairs,
+                placeOnSlides: places.length > 1,
                 getImage: (fileId) => fetchPhoto(ctx, fileId),
             });
-            const view = cleaningSubmitView(ctx.lang, place);
-            await ctx.replyWithDocument(new InputFile(deck, `cleaning-${place.toLowerCase()}-${dateText}.pptx`), {
-                caption: `Esselamu aleyküm!\n${branch?.name ?? ''} şubesi, bu haftaki ${CLEANING_PLACE_NAMES_TR[place]} temizliği ektedir (${dateText}).\nİlginiz için teşekkürler!`,
+            const view = cleaningSubmitView(ctx.lang, key === CLEANING_OTHERS_KEY ? CLEANING_OTHERS_KEY : places[0]);
+            await ctx.replyWithDocument(new InputFile(deck, `cleaning-${key.toLowerCase()}-${dateText}.pptx`), {
+                caption: `Esselamu aleyküm!\n${branch?.name ?? ''} şubesi, bu haftaki ${placeNameTr} temizliği ektedir (${dateText}).\nİlginiz için teşekkürler!`,
                 reply_markup: view.keyboard,
             });
         } catch (err) {

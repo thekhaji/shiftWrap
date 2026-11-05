@@ -139,6 +139,30 @@ class MemberService {
         return member.toObject() as Member;
     }
 
+    // an Express driver: has no branch, receives the orders of every Express branch
+    async makeDriver(telegramId: number): Promise<Member> {
+        const member = await this.memberModel.findOneAndUpdate(
+            { telegramId },
+            { type: MemberType.DRIVER, status: MemberStatus.ACTIVE, $unset: { branchId: '', managerRole: '' } },
+            { new: true }
+        );
+        if (!member) throw new Errors(HttpCode.NOT_FOUND, Message.NO_DATA_FOUND);
+        return member.toObject() as Member;
+    }
+
+    async getDrivers(): Promise<Member[]> {
+        return this.memberModel.find({ type: MemberType.DRIVER, status: MemberStatus.ACTIVE }).sort({ name: 1 }).lean<Member[]>();
+    }
+
+    // no longer a driver: back to a plain, inactive member with no branch
+    async removeDriver(memberId: Types.ObjectId): Promise<Member | null> {
+        return this.memberModel.findOneAndUpdate(
+            { _id: memberId, type: MemberType.DRIVER },
+            { type: MemberType.USER, status: MemberStatus.INACTIVE, $unset: { branchId: '', managerRole: '' } },
+            { new: true }
+        ).lean<Member>();
+    }
+
     // back to a plain employee with no branch
     async removeManager(telegramId: number): Promise<Member> {
         const member = await this.memberModel.findOneAndUpdate(

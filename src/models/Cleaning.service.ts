@@ -13,9 +13,9 @@ class CleaningService {
         return pair.toObject() as CleaningPair;
     }
 
-    async getPairs(branchId: Types.ObjectId, weekStart: Date, place?: CleaningPlace): Promise<CleaningPair[]> {
+    async getPairs(branchId: Types.ObjectId, weekStart: Date, place?: CleaningPlace | CleaningPlace[]): Promise<CleaningPair[]> {
         return this.pairModel
-            .find({ branchId, weekStart, ...(place ? { place } : {}) })
+            .find({ branchId, weekStart, ...(place ? { place: Array.isArray(place) ? { $in: place } : place } : {}) })
             .sort({ createdAt: 1 })
             .lean<CleaningPair[]>();
     }

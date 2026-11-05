@@ -1,15 +1,17 @@
 import PptxGenJS from 'pptxgenjs';
 import { CleaningPair } from '../types/cleaning';
+import { CLEANING_PLACE_NAMES } from '../enums/cleaning.enum';
 
 interface CleaningDeckInput {
     branchName: string;
     placeName: string;
     dateText: string;
     pairs: CleaningPair[];
+    placeOnSlides?: boolean;   // combined deck: each slide is headed with its place
     getImage: (fileId: string) => Promise<string>;   // "image/jpeg;base64,..." data for pptxgenjs
 }
 
-// 16:9 deck: title slide, then one slide per before/after pair
+// 16:9 deck: title slide, then one slide per before/after pair, the combined one headed with its place on each slide
 export async function buildCleaningPptx(input: CleaningDeckInput): Promise<Buffer> {
     const pptx = new PptxGenJS();
     pptx.layout = 'LAYOUT_WIDE'; // 13.33 x 7.5 in
@@ -21,14 +23,17 @@ export async function buildCleaningPptx(input: CleaningDeckInput): Promise<Buffe
 
     for (const pair of input.pairs) {
         const slide = pptx.addSlide();
+        // only the combined deck names the place on its slides; a single-place deck says it on the title slide
+        const top = input.placeOnSlides ? 0.4 : 0;
+        if (input.placeOnSlides) slide.addText(CLEANING_PLACE_NAMES[pair.place], { x: 0.5, y: 0.1, w: 12.33, h: 0.4, fontSize: 16, bold: true, color: '444444', align: 'center' });
         const [before, after] = await Promise.all([input.getImage(pair.beforeFileId), input.getImage(pair.afterFileId)]);
         const columns = [
             { x: 0.5, label: 'Tozalashdan oldin', data: before },
             { x: 6.93, label: 'Tozalashdan keyin', data: after },
         ];
         for (const c of columns) {
-            slide.addText(c.label, { x: c.x, y: 0.3, w: 5.9, h: 0.6, fontSize: 22, bold: true, align: 'center' });
-            slide.addImage({ data: c.data, x: c.x, y: 1.0, w: 5.9, h: 5.6, sizing: { type: 'contain', w: 5.9, h: 5.6 } });
+            slide.addText(c.label, { x: c.x, y: 0.3 + top, w: 5.9, h: 0.6, fontSize: 22, bold: true, align: 'center' });
+            slide.addImage({ data: c.data, x: c.x, y: 1.0 + top, w: 5.9, h: 5.6 - top, sizing: { type: 'contain', w: 5.9, h: 5.6 - top } });
         }
         slide.addText(`Yuklagan xodim: ${pair.memberName}`, { x: 8.33, y: 6.85, w: 4.5, h: 0.4, fontSize: 14, color: '444444', align: 'right' });
     }

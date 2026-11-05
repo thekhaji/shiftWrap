@@ -20,9 +20,13 @@ function mainMenuKeyboard(member?: Member) {
             bossKeyboard.text(t(lang, 'menu.inviteBoss')).row();
             bossKeyboard.text(t(lang, 'menu.addProduct')).row();
             bossKeyboard.text(t(lang, 'menu.branchSettings')).row();
+            bossKeyboard.text(t(lang, 'menu.expressSettings')).row();
         }
         return bossKeyboard.text(t(lang, 'menu.language')).resized().persistent();
     }
+
+    // a driver only receives Express orders: nothing to tap but the language
+    if (member?.type === "DRIVER") return new Keyboard().text(t(lang, 'menu.language')).resized().persistent();
 
     const employeeKeyboard = new Keyboard()
         .text(t(lang, 'menu.checkIn'))
@@ -37,6 +41,7 @@ function mainMenuKeyboard(member?: Member) {
 
     if (member && hasManagerPermission(member)) {
         employeeKeyboard.row().text(t(lang, 'menu.storage'));
+        employeeKeyboard.row().text(t(lang, 'menu.expressOrder'));
         employeeKeyboard.row().text(t(lang, 'menu.cleaningControl'));
         // the assistant never sees pay: no branch report, payroll or payroll status
         if (hasSalaryAccess(member)) {

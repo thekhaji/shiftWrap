@@ -1,6 +1,6 @@
 import crypto from 'crypto';
 import { Types } from 'mongoose';
-import BossInviteModel from '../schema/BossInvite.model';
+import BossInviteModel, { BossInvite } from '../schema/BossInvite.model';
 
 const INVITE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -11,17 +11,23 @@ class InviteService {
         return token;
     }
 
+    // one driver serves every Express branch, so the link is not tied to a branch
+    async createDriverInvite(createdBy: Types.ObjectId): Promise<string> {
+        const token = crypto.randomBytes(16).toString('base64url');
+        await BossInviteModel.create({ token, createdBy, role: 'DRIVER', expiresAt: new Date(Date.now() + INVITE_TTL_MS) });
+        return token;
+    }
+
     async isValid(token: string): Promise<boolean> {
         return !!(await BossInviteModel.exists({ token, usedAt: null, expiresAt: { $gt: new Date() } }));
     }
 
     // atomic, so one link can never register two people
-    async consume(token: string, telegramId: number): Promise<boolean> {
-        const invite = await BossInviteModel.findOneAndUpdate(
+    async consume(token: string, telegramId: number): Promise<BossInvite | null> {
+        return BossInviteModel.findOneAndUpdate(
             { token, usedAt: null, expiresAt: { $gt: new Date() } },
             { $set: { usedAt: new Date(), usedBy: telegramId } }
-        );
-        return !!invite;
+        ).lean<BossInvite>();
     }
 
     // give the link back when registration failed after consuming it

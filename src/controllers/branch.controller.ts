@@ -383,27 +383,15 @@ export function branchController(bot: Bot<MyContext>) {
         await ctx.editMessageText(view.text, { reply_markup: view.keyboard }).catch(() => {});
     }
 
-    // groups where the bot is currently an admin (membership can change any time, so ask Telegram)
-    async function adminGroups(ctx: MyContext) {
-        const result: { chatId: number; title: string }[] = [];
-        for (const g of await groupService.getAll()) {
-            try {
-                const me = await ctx.api.getChatMember(g.chatId, ctx.me.id);
-                if (me.status === 'administrator' || me.status === 'creator') result.push(g);
-                else if (me.status === 'left' || me.status === 'kicked') await groupService.forget(g.chatId);
-            } catch {
-                await groupService.forget(g.chatId); // chat is gone or unreachable
-            }
-        }
-        return result;
-    }
+    const adminGroups = (ctx: MyContext) => groupService.getAdminGroups(ctx.api, ctx.me.id);
 
-    // chat ids already serving any branch, as its order group or its cleaning group
+    // chat ids already serving any branch, as its order, cleaning or Express group
     async function assignedGroupIds(): Promise<Set<number>> {
         const ids = new Set<number>();
         for (const b of await branchService.getAllBranches()) {
             if (b.orderGroupId !== undefined) ids.add(b.orderGroupId);
             if (b.cleaningGroupId !== undefined) ids.add(b.cleaningGroupId);
+            if (b.expressGroupId !== undefined) ids.add(b.expressGroupId);
         }
         return ids;
     }

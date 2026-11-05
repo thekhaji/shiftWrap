@@ -50,6 +50,19 @@ Use a separate bot token and a separate database for development and production.
   The bot must be a group admin with the "Manage topics" right.
 - **Sessions** are stored in MongoDB, so restarts don't lose half-finished flows.
 
+## Express branches
+
+One branch can be **Taksim Express** and one **Troy Express** (admin: Branch settings > branch > Express). Other branches can be
+given access to order from one of them. Express products and their prices are kept per Express branch (Express > Express products).
+
+1. A manager or assistant of a branch with access taps **Express order**, sets quantities with ➕/➖, picks the day the products are needed and submits.
+2. The Express branch's manager and assistants get the order (and find unsent ones under **Requests**) and tap **Tag employee**.
+3. The tagged employee taps **Send full order**, or changes the quantities and taps **Sent**.
+4. The next day from 09:00 (Seoul) the ordering branch is asked whether the sent quantities arrived. **Yes** confirms them; **No** lets
+   them set what they really received. The Express branch is told about any difference.
+5. Bosses and admins tap **Express report**, choose the Express branch, the ordering branch (or all) and the month, and get an Excel receipt.
+   It counts only confirmed orders, at the price each product had when it was ordered.
+
 ## Time handling (read before touching dates)
 
 Shift times are stored as **Seoul wall-clock time labeled as UTC**: a check-in at 09:00 in Seoul is saved as

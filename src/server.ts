@@ -27,6 +27,7 @@ import { startCheckoutReminders } from './libs/utils/reminders';
 import { payrollController } from './controllers/payroll.controller';
 import { groupController } from './controllers/group.controller';
 import { cleaningController } from './controllers/cleaning.controller';
+import { expressController, startExpressConfirmations } from './controllers/express.controller';
 
 export interface SessionData {
     awaitingAction?: "checkin" | "checkout" | "register_branch_name" | "register_branch_location" | "edit_member_field";
@@ -50,6 +51,8 @@ export interface SessionData {
     lastCleaningAlbumId?: string;  // saved album; its leftover photos are ignored
     bossInvite?: string;           // valid invite token, carried from /start until the phone is shared
     submitReport?: { branchId: string; year: number; month: number; plan?: ShiftPlan };  // report being checked before submit
+    expressProduct?: { branchId: string; step: 'name' | 'price'; name?: string; productId?: string };   // admin adding / repricing an Express product
+    expressOrder?: { supplierId: string; qty: Record<string, number>; date?: string };                   // an Express order being put together
     lang?: Lang;                   // chosen before registration finishes
     basketMessageIds?: number[];   // message ids of the catalog, so they can be deleted later
 }
@@ -94,10 +97,12 @@ async function main() {
     cleaningController(bot);
     submissionController(bot);
     payrollController(bot);
+    expressController(bot);
 
     await memberService.ensureAdmins(adminTelegramIds());
     startMenuSync(bot);
     startCheckoutReminders(bot);
+    startExpressConfirmations(bot);
 
     // let a deploy or restart finish the update in progress
     const shutdown = async (signal: string) => {

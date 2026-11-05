@@ -11,12 +11,15 @@ import { reportMonthSeoul } from '../libs/utils/date';
 import { allLabels, DEFAULT_LANG, monthNames, t } from '../libs/i18n';
 import { buildPlan } from '../libs/utils/reportEdit';
 import { checkReady } from './submission.controller';
+import ExpressService from '../models/Express.service';
+import { sendExpressNotice } from './express.controller';
 import { approvalRequestView, branchPickerView, joinRequestView, payrollStatusView } from '../views/index';
 
 const attendanceService = new AttendanceService();
 const branchService = new BranchService();
 const memberService = new MemberService();
 const payrollService = new PayrollService();
+const expressService = new ExpressService();
 
 function hours(minutes: number): string {
     return `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}`;
@@ -46,7 +49,10 @@ export function payrollController(bot: Bot<MyContext>) {
             ? (await payrollService.getPending(scope)).filter(s => !s.memberId.equals(actor._id))
             : [];
 
-        if (employees.length === 0 && submissions.length === 0) {
+        // an Express branch's manager also finds the orders still waiting to be sent here
+        const expressOrders = actor.branchId && hasManagerPermission(actor) ? await expressService.getPendingForSupplier(actor.branchId) : [];
+
+        if (employees.length === 0 && submissions.length === 0 && expressOrders.length === 0) {
             await ctx.reply(t(ctx.lang, 'req.none'));
             return;
         }
@@ -56,6 +62,8 @@ export function payrollController(bot: Bot<MyContext>) {
             const view = joinRequestView(ctx.lang, e, branches.get(branchId) ?? '', branchId);
             await ctx.reply(view.text, { reply_markup: view.keyboard });
         }
+
+        for (const order of expressOrders) await sendExpressNotice(ctx.api, actor, order);
 
         const names = new Map((await memberService.getMembersByIds(submissions.map(s => s.memberId))).map(m => [m._id.toString(), m.name]));
         for (const s of submissions) {

@@ -39,19 +39,25 @@ export function memberController(bot: Bot<MyContext>) {
 
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
 
-        // t.me/<bot>?start=boss_<token>
-        const token = ctx.match.startsWith('boss_') ? ctx.match.slice('boss_'.length) : undefined;
+        // t.me/<bot>?start=boss_<token> or ?start=driver_<token>
+        const token = ctx.match.startsWith('boss_') ? ctx.match.slice('boss_'.length)
+            : ctx.match.startsWith('driver_') ? ctx.match.slice('driver_'.length) : undefined;
         if (token) {
             if (!(await inviteService.isValid(token))) {
                 await ctx.reply(t(ctx.lang, 'invite.invalid'));
                 if (!member) return;
             } else if (!member) {
                 ctx.session.bossInvite = token; // used when the phone number arrives
-            } else if (!isBossOrAdmin(member) && await inviteService.consume(token, ctx.from.id)) {
-                const boss = await memberService.promoteToBoss(member.telegramId);
-                const view = mainMenuView(boss);
-                await ctx.reply(`${t(boss.language ?? ctx.lang, 'invite.promoted')}\n${view.text}`, { reply_markup: view.keyboard });
-                return;
+            } else if (!isBossOrAdmin(member)) {
+                const invite = await inviteService.consume(token, ctx.from.id);
+                if (invite) {
+                    const promoted = invite.role === 'DRIVER'
+                        ? await memberService.makeDriver(member.telegramId)
+                        : await memberService.promoteToBoss(member.telegramId);
+                    const view = mainMenuView(promoted);
+                    await ctx.reply(`${t(promoted.language ?? ctx.lang, promoted.type === MemberType.DRIVER ? 'invite.driverAdded' : 'invite.promoted')}\n${view.text}`, { reply_markup: view.keyboard });
+                    return;
+                }
             }
         }
 
@@ -92,10 +98,12 @@ export function memberController(bot: Bot<MyContext>) {
         // an invited boss is trusted; everyone else waits for their branch manager
         const inviteToken = ctx.session.bossInvite;
         ctx.session.bossInvite = undefined;
-        if (inviteToken && !(await inviteService.consume(inviteToken, ctx.from.id))) {
+        const invite = inviteToken ? await inviteService.consume(inviteToken, ctx.from.id) : null;
+        if (inviteToken && !invite) {
             await ctx.reply(t(ctx.lang, 'invite.invalid'));
             return;
         }
+        const isDriver = invite?.role === 'DRIVER';
 
         const configuredAdmin = adminTelegramIds().includes(ctx.from.id);
         const memberInput: MemberInput = {
@@ -104,13 +112,14 @@ export function memberController(bot: Bot<MyContext>) {
             username: ctx.from.username,
             phone: ctx.message.contact.phone_number,
             language: ctx.session.lang ?? ctx.lang,
-            type: configuredAdmin ? MemberType.ADMIN : inviteToken ? MemberType.BOSS : MemberType.USER,
+            type: configuredAdmin ? MemberType.ADMIN : isDriver ? MemberType.DRIVER : inviteToken ? MemberType.BOSS : MemberType.USER,
             status: configuredAdmin || inviteToken ? MemberStatus.ACTIVE : MemberStatus.PENDING,
         };
 
         // createMember throws rather than returning a failure value, so this needs try/catch.
         try {
-            const result = await memberService.createMember(memberInput);
+            let result = await memberService.createMember(memberInput);
+            if (isDriver && result.type === MemberType.DRIVER) result = await memberService.makeDriver(result.telegramId);
             if (result.status === MemberStatus.PENDING) {
                 await askBranch(ctx);
                 return;

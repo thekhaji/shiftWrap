@@ -3,6 +3,7 @@ export enum MemberType{
     MANAGER = 'MANAGER',
     BOSS = 'BOSS',
     ADMIN = 'ADMIN',
+    DRIVER = 'DRIVER',   // invited by the admin; belongs to an Express branch and receives its orders
 }
 
 // A branch has one MAIN manager and one ASSISTANT. A manager without a role (created before
