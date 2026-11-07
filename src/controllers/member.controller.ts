@@ -54,7 +54,7 @@ export function memberController(bot: Bot<MyContext>) {
                     const promoted = invite.role === 'DRIVER'
                         ? await memberService.makeDriver(member.telegramId)
                         : await memberService.promoteToBoss(member.telegramId);
-                    const view = mainMenuView(promoted);
+                    const view = await mainMenuView(promoted);
                     await ctx.reply(`${t(promoted.language ?? ctx.lang, promoted.type === MemberType.DRIVER ? 'invite.driverAdded' : 'invite.promoted')}\n${view.text}`, { reply_markup: view.keyboard });
                     return;
                 }
@@ -66,7 +66,7 @@ export function memberController(bot: Bot<MyContext>) {
                 await sendPendingState(ctx, member);
                 return;
             }
-            const view = mainMenuView(member);
+            const view = await mainMenuView(member);
             await ctx.reply(view.text, { reply_markup: view.keyboard });
         } else if (ctx.session.lang) {
             const view = askPhoneView(ctx.session.lang);
@@ -90,7 +90,7 @@ export function memberController(bot: Bot<MyContext>) {
         // Already registered — just show the menu instead of trying to re-register.
         const existing = await memberService.getMemberByTelegramId(ctx.from.id);
         if (existing) {
-            const view = mainMenuView(existing);
+            const view = await mainMenuView(existing);
             await ctx.reply(view.text, { reply_markup: view.keyboard });
             return;
         }
@@ -124,7 +124,7 @@ export function memberController(bot: Bot<MyContext>) {
                 await askBranch(ctx);
                 return;
             }
-            const view = mainMenuView(result);
+            const view = await mainMenuView(result);
             await ctx.reply(view.text, { reply_markup: view.keyboard });
         } catch (err) {
             if (inviteToken) await inviteService.release(inviteToken); // the link was not used up
@@ -132,7 +132,7 @@ export function memberController(bot: Bot<MyContext>) {
             if (err instanceof Errors && err.message === Message.EXISTING_USER) {
                 const existingMember = await memberService.getMemberByTelegramId(memberInput.telegramId);
                 if (existingMember) {
-                    const view = mainMenuView(existingMember);
+                    const view = await mainMenuView(existingMember);
                     await ctx.reply(view.text, { reply_markup: view.keyboard });
                 }
                 return;

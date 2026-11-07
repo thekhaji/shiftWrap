@@ -2,8 +2,10 @@ import { Bot } from 'grammy';
 import { MyContext } from '../../server';
 import MemberModel from '../../schema/Member.model';
 import { Member } from '../types/member';
+import { MemberStatus, MemberType } from '../enums/member.enum';
 import { DEFAULT_LANG, t } from '../i18n';
-import { mainMenuView } from '../../views/index';
+import { mainMenuView, menuUpdatedView } from '../../views/index';
+import BranchModel from '../../schema/Branch.model';
 import { isAssistant } from './permission';
 import BranchService from '../../models/Branch.service';
 
@@ -30,7 +32,7 @@ export function startMenuSync(bot: Bot<MyContext>) {
         const member = change.fullDocument as Member | undefined;
         if (!member || member.status === 'PENDING') return;
         const lang = member.language ?? DEFAULT_LANG;
-        const view = mainMenuView(member);
+        const view = await mainMenuView(member);
         // only the branch changed (an admin moved the employee): say that, not "role updated"
         const fields = change.updateDescription?.updatedFields ?? {};
         const branchOnly = 'branchId' in fields && !('type' in fields) && !('managerRole' in fields);
@@ -46,4 +48,23 @@ export function startMenuSync(bot: Bot<MyContext>) {
     });
 
     stream.on('error', (err) => console.error('menu sync stream error:', err));
+
+    // the admin gave a branch Express access (or took it away): its managers get the menu with or without the Express button
+    const branchStream = BranchModel.watch(
+        [{ $match: { operationType: 'update' } }],
+        { fullDocument: 'updateLookup' }
+    );
+
+    branchStream.on('change', async (change: any) => {
+        const touched = [...Object.keys(change.updateDescription?.updatedFields ?? {}), ...(change.updateDescription?.removedFields ?? [])];
+        if (!touched.some(k => k.startsWith('expressSupplierIds')) || !change.fullDocument) return;
+        const managers = await MemberModel.find({ type: MemberType.MANAGER, branchId: change.fullDocument._id, status: MemberStatus.ACTIVE }).lean<Member[]>();
+        for (const m of managers) {
+            const view = await menuUpdatedView(m);
+            await bot.api.sendMessage(m.telegramId, t(m.language ?? DEFAULT_LANG, 'express.accessChanged'), { reply_markup: view.keyboard })
+                .catch((err) => console.error(`express menu sync failed for ${m.telegramId}:`, err));
+        }
+    });
+
+    branchStream.on('error', (err) => console.error('branch menu sync stream error:', err));
 }

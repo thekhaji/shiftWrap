@@ -26,7 +26,7 @@ async function main() {
 
     for (const member of members) {
         try {
-            const view = menuUpdatedView(member);
+            const view = await menuUpdatedView(member);
             await api.sendMessage(member.telegramId, view.text, { reply_markup: view.keyboard });
             sent++;
         } catch (err: any) {

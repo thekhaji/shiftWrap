@@ -34,6 +34,10 @@ const memberSchema = new Schema({
         type: String,
         enum: ManagerRole   // only for type MANAGER; unset = MAIN
     },
+    panel: {
+        type: String,
+        enum: ['EMPLOYEE', 'MANAGER', 'ADMIN', 'BOSS']   // the menu the member switched to; a manager defaults to EMPLOYEE, an admin to ADMIN
+    },
     status: { 
         type: String, 
         enum: MemberStatus, 

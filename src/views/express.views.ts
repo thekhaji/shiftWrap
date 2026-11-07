@@ -81,34 +81,39 @@ export function expressDriversView(lang: Lang, drivers: Member[]) {
     return { text: t(lang, 'xs.driversTitle'), keyboard };
 }
 
-// every branch that is not Express, with the Express branch it may order from
+// every branch that is not Express, with the Express branches it may order from
 export function expressAccessListView(lang: Lang, branches: Branch[], expressBranches: Branch[]) {
     const keyboard = new InlineKeyboard();
     for (const b of branches) {
-        const supplier = b.expressSupplierId ? expressBranches.find(e => e._id.equals(b.expressSupplierId!)) : undefined;
-        const label = supplier?.express ? `✅ ${short(b.name, 18)} → ${typeName(lang, supplier.express)}` : short(b.name, 28);
-        keyboard.text(label, `xs_ab:${b._id.toString()}`).row();
+        const types = expressBranches.filter(e => b.expressSupplierIds?.some(id => id.equals(e._id))).map(e => typeName(lang, e.express!));
+        keyboard.text(types.length ? `✅ ${short(b.name, 14)} → ${types.join(' + ')}` : short(b.name, 28), `xs_ab:${b._id.toString()}`).row();
     }
     keyboard.text(t(lang, 'bs.backShort'), 'xs_home');
     const text = `${t(lang, 'xs.accessTitle')}${expressBranches.length === 0 ? `\n\n${t(lang, 'bx.noExpressYet')}` : branches.length === 0 ? `\n\n${t(lang, 'branch.none')}` : ''}`;
     return { text, keyboard };
 }
 
-// which Express branch one branch may order from
-export function expressAccessView(lang: Lang, branch: Branch, expressBranches: Branch[], supplier?: Branch) {
+// which Express branches one branch may order from: each button switches one on or off
+export function expressAccessView(lang: Lang, branch: Branch, expressBranches: Branch[]) {
     const id = branch._id.toString();
     const keyboard = new InlineKeyboard();
+    const allowed: string[] = [];
     for (const eb of expressBranches) {
-        const chosen = branch.expressSupplierId?.equals(eb._id);
-        keyboard.text(`${chosen ? '✅ ' : ''}${t(lang, 'bx.accessFor', { type: typeName(lang, eb.express!) })}`, `bx_s:${id}:${eb._id.toString()}`).row();
+        const chosen = !!branch.expressSupplierIds?.some(s => s.equals(eb._id));
+        if (chosen) allowed.push(`${typeName(lang, eb.express!)} (${eb.name})`);
+        keyboard.text(`${chosen ? '✅' : '⬜'} ${t(lang, 'bx.accessFor', { type: typeName(lang, eb.express!) })}`, `bx_s:${id}:${eb._id.toString()}`).row();
     }
-    if (supplier) keyboard.text(t(lang, 'bx.removeAccess'), `bx_s:${id}:NONE`).row();
     keyboard.text(t(lang, 'bs.backShort'), 'xs_acc');
-    const text = t(lang, 'xs.accessBranch', {
-        branch: branch.name,
-        supplier: supplier?.express ? `${typeName(lang, supplier.express)} (${supplier.name})` : t(lang, 'bx.none'),
-    });
+    const text = t(lang, 'xs.accessBranch', { branch: branch.name, supplier: allowed.length ? allowed.join(', ') : t(lang, 'bx.none') });
     return { text, keyboard };
+}
+
+// the manager of a branch with access to both Express branches picks where to order from
+export function expressSupplierPickView(lang: Lang, suppliers: Branch[]) {
+    const keyboard = new InlineKeyboard();
+    for (const sp of suppliers) keyboard.text(`${typeName(lang, sp.express!)} · ${short(sp.name)}`, `xo_s:${sp._id.toString()}`).row();
+    keyboard.text(t(lang, 'common.cancel'), 'xo_cancel');
+    return { text: t(lang, 'xo.pickSupplier'), keyboard };
 }
 
 // what the driver gets for every new order
@@ -250,17 +255,17 @@ export function expressConfirmView(lang: Lang, order: ExpressOrder, d: { supplie
 
 // ---------------- admin report (inside Express settings) ----------------
 
-export function expressReportTypeView(lang: Lang, expressBranches: Branch[]) {
+export function expressReportTypeView(lang: Lang, expressBranches: Branch[], withBack: boolean) {
     const keyboard = new InlineKeyboard();
     for (const b of expressBranches) keyboard.text(`${typeName(lang, b.express!)} (${b.name})`, `xr_e:${b.express}`).row();
-    keyboard.text(t(lang, 'bs.backShort'), 'xs_home');
+    if (withBack) keyboard.text(t(lang, 'bs.backShort'), 'xs_home');   // opened from Express settings
     return { text: t(lang, 'xr.pickExpress'), keyboard };
 }
 
 export function expressReportBranchView(lang: Lang, type: ExpressType, branches: Branch[]) {
     const keyboard = new InlineKeyboard().text(t(lang, 'xr.allBranches'), `xr_b:${type},ALL`).row();
     for (const b of branches) keyboard.text(b.name, `xr_b:${type},${b._id.toString()}`).row();
-    keyboard.text(t(lang, 'bs.backShort'), 'xs_rep');
+    keyboard.text(t(lang, 'bs.backShort'), 'xr_back');
     return { text: t(lang, 'xr.pickBranch', { type: typeName(lang, type) }), keyboard };
 }
 

@@ -46,8 +46,10 @@ class ProductImageService {
             }
             if (before.imageReference) await this.remove(before.imageReference);
             return true;
-        } catch (err) {
-            console.error(`saving image of product ${productId} failed:`, err);
+        } catch (err: any) {
+            // Telegram refusing the file_id is expected for photos another bot saved: one line, not a stack trace
+            if (err?.error_code === 400) console.warn(`product ${productId}: Telegram does not accept its photo (${err.description}); upload the photo again`);
+            else console.error(`saving image of product ${productId} failed:`, err);
             return false;
         }
     }

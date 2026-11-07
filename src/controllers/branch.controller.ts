@@ -95,7 +95,7 @@ export function branchController(bot: Bot<MyContext>) {
             if (ctx.from) {
                 const member = await memberService.getMemberByTelegramId(ctx.from.id);
                 if (member) {
-                    const menu = mainMenuView(member);
+                    const menu = await mainMenuView(member);
                     await ctx.reply(menu.text, { reply_markup: menu.keyboard });
                 }
             }

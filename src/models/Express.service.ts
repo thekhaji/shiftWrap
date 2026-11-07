@@ -29,7 +29,7 @@ class ExpressService {
         if (taken) return { ok: false, takenBy: taken };
         try {
             // an Express branch sends products, it does not order them
-            await BranchModel.updateOne({ _id: branchId }, { $set: { express: type }, $unset: { expressSupplierId: '' } });
+            await BranchModel.updateOne({ _id: branchId }, { $set: { express: type }, $unset: { expressSupplierIds: '' } });
         } catch (err: any) {
             if (err.code === 11000) {   // two admins at once: the unique index decides
                 const holder = await BranchModel.findOne({ express: type }).lean<Branch>();
@@ -42,22 +42,51 @@ class ExpressService {
 
     // false = other branches still order from it, so it cannot stop being an Express branch
     async clearType(branchId: Id): Promise<boolean> {
-        if (await BranchModel.exists({ expressSupplierId: branchId })) return false;
+        if (await BranchModel.exists({ expressSupplierIds: branchId })) return false;
         await BranchModel.updateOne({ _id: branchId }, { $unset: { express: '', expressGroupId: '' } });
         return true;
     }
 
-    // give a branch access to one Express branch (or none)
-    async setSupplier(branchId: Id, supplierId: Id | null): Promise<boolean> {
-        if (!supplierId) {
-            await BranchModel.updateOne({ _id: branchId }, { $unset: { expressSupplierId: '' } });
+    // give a branch access to one Express branch, or take it away; access to both is allowed
+    async setSupplier(branchId: Id, supplierId: Id, granted: boolean): Promise<boolean> {
+        if (!granted) {
+            await BranchModel.updateOne({ _id: branchId }, { $pull: { expressSupplierIds: supplierId } });
             return true;
         }
         const supplier = await BranchModel.findOne({ _id: supplierId, express: { $exists: true } }).lean<Branch>();
         const branch = await BranchModel.findOne({ _id: branchId, express: { $exists: false } }).lean<Branch>();
         if (!supplier || !branch) return false;
-        await BranchModel.updateOne({ _id: branchId }, { $set: { expressSupplierId: supplierId } });
+        await BranchModel.updateOne({ _id: branchId }, { $addToSet: { expressSupplierIds: supplierId } });
         return true;
+    }
+
+    // branches had one supplier (expressSupplierId) before they could have both: move it into the list
+    async migrateSuppliers(): Promise<void> {
+        const legacy = await BranchModel.collection.find({ expressSupplierId: { $exists: true } }).toArray();
+        for (const b of legacy) {
+            await BranchModel.collection.updateOne(
+                { _id: b._id },
+                { $addToSet: { expressSupplierIds: b.expressSupplierId }, $unset: { expressSupplierId: '' } },
+            );
+        }
+    }
+
+    // the Express branches (with their type) a branch may order from
+    async getSuppliersOf(branch: Branch): Promise<Branch[]> {
+        if (!branch.expressSupplierIds?.length) return [];
+        return BranchModel.find({ _id: { $in: branch.expressSupplierIds }, express: { $exists: true } }).sort({ express: 1 }).lean<Branch[]>();
+    }
+
+    // branches that can still be made an Express branch: not Express, and not ordering from one
+    async getCandidates(): Promise<Branch[]> {
+        return BranchModel.find({
+            express: { $exists: false },
+            $or: [{ expressSupplierIds: { $exists: false } }, { expressSupplierIds: { $size: 0 } }],
+        }).sort({ name: 1 }).lean<Branch[]>();
+    }
+
+    async getBranchesWithoutExpress(): Promise<Branch[]> {
+        return BranchModel.find({ express: { $exists: false } }).sort({ name: 1 }).lean<Branch[]>();
     }
 
     async setGroup(branchId: Id, chatId: number | null): Promise<boolean> {
@@ -67,17 +96,8 @@ class ExpressService {
         return res.matchedCount > 0;
     }
 
-    // branches that can still be made an Express branch: not Express, and not ordering from one
-    async getCandidates(): Promise<Branch[]> {
-        return BranchModel.find({ express: { $exists: false }, expressSupplierId: { $exists: false } }).sort({ name: 1 }).lean<Branch[]>();
-    }
-
-    async getBranchesWithoutExpress(): Promise<Branch[]> {
-        return BranchModel.find({ express: { $exists: false } }).sort({ name: 1 }).lean<Branch[]>();
-    }
-
     async getOrderingBranches(supplierId: Id): Promise<Branch[]> {
-        return BranchModel.find({ expressSupplierId: supplierId }).sort({ name: 1 }).lean<Branch[]>();
+        return BranchModel.find({ expressSupplierIds: supplierId }).sort({ name: 1 }).lean<Branch[]>();
     }
 
     // ---------------- products and prices ----------------

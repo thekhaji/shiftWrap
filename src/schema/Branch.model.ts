@@ -26,10 +26,7 @@ const branchSchema = new Schema(
         expressGroupId: {
             type: Number,   // the group where orders to this Express branch arrive
         },
-        expressSupplierId: {
-            type: Schema.Types.ObjectId,   // the Express branch this branch may order from
-            ref: 'Branch',
-        },
+        expressSupplierIds: [{ type: Schema.Types.ObjectId, ref: 'Branch' }],   // the Express branches this branch may order from
         productIds: [{ type: Schema.Types.ObjectId, ref: 'Product' }],
         cleaningGroupId: {
             type: Number,

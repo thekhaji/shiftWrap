@@ -1,5 +1,5 @@
 import MemberModel from '../schema/Member.model';
-import { Member, MemberInput, MemberManagerUpdate } from '../libs/types/member';
+import { Member, MemberInput, MemberManagerUpdate, MenuPanel } from '../libs/types/member';
 import Errors, { HttpCode, Message } from '../libs/Errors';
 import { Types } from 'mongoose';
 import { Lang } from '../libs/i18n';
@@ -60,6 +60,13 @@ class MemberService {
     async getAllMembers(): Promise<Member[]> {
         const members = await this.memberModel.find();
         return members.map(member => member.toObject() as Member);
+    }
+
+    // the manager / admin switched between their menus
+    async setPanel(telegramId: number, panel: MenuPanel): Promise<Member> {
+        const member = await this.memberModel.findOneAndUpdate({ telegramId }, { panel }, { new: true });
+        if (!member) throw new Errors(HttpCode.NOT_FOUND, Message.NO_DATA_FOUND);
+        return member.toObject() as Member;
     }
 
     async setLanguage(telegramId: number, language: Lang): Promise<Member> {

@@ -123,7 +123,7 @@ export function registrationController(bot: Bot<MyContext>) {
         const branch = await branchService.getBranchById(new Types.ObjectId(branchId));
         const branchName = branch?.name ?? '';
         if (approve) {
-            const menu = mainMenuView(target);
+            const menu = await mainMenuView(target);
             await ctx.api.sendMessage(target.telegramId, `${t(lang, 'reg.confirmed', { branch: branchName })}\n${menu.text}`, { reply_markup: menu.keyboard })
                 .catch((err) => console.error(`confirm notice to ${target.telegramId} failed:`, err));
         } else {

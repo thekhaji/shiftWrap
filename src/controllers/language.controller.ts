@@ -38,7 +38,7 @@ export function languageController(bot: Bot<MyContext>) {
         ctx.lang = lang;
         await ctx.answerCallbackQuery();
         await ctx.editMessageText(t(lang, 'lang.changed'));
-        const menu = mainMenuView(member); // reply keyboards only change when we send a new one
+        const menu = await mainMenuView(member); // reply keyboards only change when we send a new one
         await ctx.reply(menu.text, { reply_markup: menu.keyboard });
     });
 }

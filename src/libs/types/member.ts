@@ -2,6 +2,8 @@ import {ManagerRole, MemberStatus, MemberType} from '../enums/member.enum';
 import {Types} from 'mongoose';
 import {Lang} from '../i18n';
 
+export type MenuPanel = 'EMPLOYEE' | 'MANAGER' | 'ADMIN' | 'BOSS';
+
 export interface Member {
     _id: Types.ObjectId;
     telegramId: number;
@@ -11,6 +13,7 @@ export interface Member {
     language?: Lang;            // chosen at registration, changeable from the menu
     type: MemberType;
     managerRole?: ManagerRole;  // only for managers; unset = MAIN
+    panel?: MenuPanel;          // which menu a manager (EMPLOYEE / MANAGER) or admin (ADMIN / BOSS) is looking at
     status: MemberStatus;
     branchId?: Types.ObjectId; //set by Boss/Admin
     hourlyRate?: number; //set by manager

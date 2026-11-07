@@ -17,7 +17,7 @@ import { nowInSeoul } from '../libs/utils/time';
 import { listText, MAX_QTY, money, orderTotal, sameQuantities, withQty } from '../libs/utils/expressMath';
 import { buildExpressReceipt, branchLines } from '../libs/utils/expressReport';
 import {
-    expressAccessListView, expressAccessView, expressBranchView, expressDriversView, expressDriverView, expressGroupPickerView,
+    expressAccessListView, expressAccessView, expressSupplierPickView, expressBranchView, expressDriversView, expressDriverView, expressGroupPickerView,
     expressSettingsView, expressTypePickerView, expressConfirmView, expressDateView, expressNoticeView, expressPickView, expressProductCardView,
     expressProductsView, expressQtyEditorView, expressReportBranchView, expressReportMonthView, expressReportTypeView,
     expressReviewView, expressStaffPickerView, expressTaskView, typeName,
@@ -142,9 +142,7 @@ export function expressController(bot: Bot<MyContext>) {
     async function showAccess(ctx: MyContext, branchId: Types.ObjectId) {
         const branch = await branchService.getBranchById(branchId);
         if (!branch || branch.express) return showAccessList(ctx);
-        const expressBranches = await expressService.getExpressBranches();
-        const supplier = branch.expressSupplierId ? expressBranches.find(b => b._id.equals(branch.expressSupplierId!)) : undefined;
-        const view = expressAccessView(ctx.lang, branch, expressBranches, supplier);
+        const view = expressAccessView(ctx.lang, branch, await expressService.getExpressBranches());
         await ctx.editMessageText(view.text, { reply_markup: view.keyboard }).catch(() => {});
     }
 
@@ -328,26 +326,23 @@ export function expressController(bot: Bot<MyContext>) {
         await showExpress(ctx, branch._id);   // falls back to the home screen once it is no longer Express
     });
 
-    // let a branch order from one Express branch (or take it away)
+    // switch one Express branch on or off for a branch: it may order from both
     bot.callbackQuery(/^bx_s:/, async (ctx) => {
         const [, branchId, supplierId] = ctx.callbackQuery.data.split(':');
         const branch = await adminBranch(ctx, branchId);
-        if (!branch) return;
-        const supplier = supplierId === 'NONE' ? null : oid(supplierId);
-        if (supplierId !== 'NONE' && !supplier) {
-            await ctx.answerCallbackQuery();
+        const supplier = oid(supplierId);
+        if (!branch || !supplier) {
+            if (branch) await ctx.answerCallbackQuery();
             return;
         }
-        if (!(await expressService.setSupplier(branch._id, supplier))) {
+        const had = !!branch.expressSupplierIds?.some(s => s.equals(supplier));
+        if (!(await expressService.setSupplier(branch._id, supplier, !had))) {
             await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.errorShort'), show_alert: true });
             return;
         }
-        let toast = t(ctx.lang, 'bx.accessRemoved');
-        if (supplier) {
-            const holder = (await expressService.getExpressBranches()).find(b => b._id.equals(supplier));
-            toast = t(ctx.lang, 'bx.accessSet', { branch: branch.name, type: holder?.express ? typeName(ctx.lang, holder.express) : '' });
-        }
-        await ctx.answerCallbackQuery({ text: toast });
+        const holder = (await expressService.getExpressBranches()).find(b => b._id.equals(supplier));
+        const type = holder?.express ? typeName(ctx.lang, holder.express) : '';
+        await ctx.answerCallbackQuery({ text: had ? t(ctx.lang, 'bx.accessRemoved') : t(ctx.lang, 'bx.accessSet', { branch: branch.name, type }) });
         await showAccess(ctx, branch._id);
     });
 
@@ -462,14 +457,25 @@ export function expressController(bot: Bot<MyContext>) {
         const st = ctx.session.expressOrder;
         if (!member || !hasManagerPermission(member) || !member.branchId || !st) return expired();
         const branch = await branchService.getBranchById(member.branchId);
-        if (!branch?.expressSupplierId || branch.expressSupplierId.toString() !== st.supplierId) return expired();
-        const supplier = await branchService.getBranchById(branch.expressSupplierId);
-        if (!supplier?.express) return expired();
+        const supplier = branch ? (await expressService.getSuppliersOf(branch)).find(sp => sp._id.toString() === st.supplierId) : undefined;
+        if (!branch || !supplier?.express) return expired();
         return { member, branch, supplier, products: await expressService.getProducts(supplier._id), st };
     }
 
     const pickView = (ctx: MyContext, s: NonNullable<Awaited<ReturnType<typeof orderState>>>, page: number) =>
         expressPickView(ctx.lang, s.supplier.name, s.products, s.st.qty, page);
+
+    // the first screen of an order from the chosen Express branch
+    async function startOrder(ctx: MyContext, supplier: Branch) {
+        const products = await expressService.getProducts(supplier._id);
+        if (products.length === 0) {
+            await ctx.reply(t(ctx.lang, 'xo.noProducts'));
+            return;
+        }
+        ctx.session.expressOrder = { supplierId: supplier._id.toString(), qty: {} };
+        const view = expressPickView(ctx.lang, supplier.name, products, {}, 0);
+        await ctx.reply(view.text, { reply_markup: view.keyboard });
+    }
 
     bot.hears(allLabels('menu.expressOrder'), async (ctx) => {
         if (!ctx.from) return;
@@ -479,19 +485,32 @@ export function expressController(bot: Bot<MyContext>) {
             return;
         }
         const branch = await branchService.getBranchById(member.branchId);
-        const supplier = branch?.expressSupplierId ? await branchService.getBranchById(branch.expressSupplierId) : null;
-        if (!supplier?.express) {
+        const suppliers = branch ? await expressService.getSuppliersOf(branch) : [];
+        if (suppliers.length === 0) {
             await ctx.reply(t(ctx.lang, 'xo.noAccess'));
             return;
         }
-        const products = await expressService.getProducts(supplier._id);
-        if (products.length === 0) {
-            await ctx.reply(t(ctx.lang, 'xo.noProducts'));
+        ctx.session.expressOrder = undefined;
+        if (suppliers.length === 1) {
+            await startOrder(ctx, suppliers[0]);
             return;
         }
-        ctx.session.expressOrder = { supplierId: supplier._id.toString(), qty: {} };
-        const view = expressPickView(ctx.lang, supplier.name, products, {}, 0);
+        // access to both Express branches: choose where to order from
+        const view = expressSupplierPickView(ctx.lang, suppliers);
         await ctx.reply(view.text, { reply_markup: view.keyboard });
+    });
+
+    bot.callbackQuery(/^xo_s:/, async (ctx) => {
+        const member = ctx.from ? await memberService.getMemberByTelegramId(ctx.from.id) : null;
+        const branch = member && hasManagerPermission(member) && member.branchId ? await branchService.getBranchById(member.branchId) : null;
+        const supplier = branch ? (await expressService.getSuppliersOf(branch)).find(sp => sp._id.toString() === ctx.callbackQuery.data.split(':')[1]) : undefined;
+        if (!supplier) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'xo.expired'), show_alert: true });
+            return;
+        }
+        await ctx.answerCallbackQuery();
+        await ctx.deleteMessage().catch(() => {});
+        await startOrder(ctx, supplier);
     });
 
     bot.callbackQuery('xo_i', (ctx) => ctx.answerCallbackQuery());
@@ -785,7 +804,32 @@ export function expressController(bot: Bot<MyContext>) {
 
     // =============== admin: the receipt of each branch, one month at a time ===============
 
-    const reportActor = async (ctx: MyContext) => (await adminOnly(ctx)) ? ctx.from ? await memberService.getMemberByTelegramId(ctx.from.id) : null : null;
+    // the report is for bosses and admins
+    async function reportActor(ctx: MyContext): Promise<Member | null> {
+        const actor = ctx.from ? await memberService.getMemberByTelegramId(ctx.from.id) : null;
+        if (!actor || !isBossOrAdmin(actor)) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
+            return null;
+        }
+        return actor;
+    }
+
+    // the boss panel (and the admin's boss view) open the report from the menu
+    bot.hears(allLabels('menu.expressReport'), async (ctx) => {
+        if (!ctx.from) return;
+        const actor = await memberService.getMemberByTelegramId(ctx.from.id);
+        if (!actor || !isBossOrAdmin(actor)) {
+            await ctx.reply(t(ctx.lang, 'common.noPermission'));
+            return;
+        }
+        const express = await expressService.getExpressBranches();
+        if (express.length === 0) {
+            await ctx.reply(t(ctx.lang, 'xr.noExpress'));
+            return;
+        }
+        const view = expressReportTypeView(ctx.lang, express, false);
+        await ctx.reply(view.text, { reply_markup: view.keyboard });
+    });
 
     bot.callbackQuery('xs_rep', async (ctx) => {
         if (!(await reportActor(ctx))) return;
@@ -795,7 +839,17 @@ export function expressController(bot: Bot<MyContext>) {
             return;
         }
         await ctx.answerCallbackQuery();
-        const view = expressReportTypeView(ctx.lang, express);
+        const view = expressReportTypeView(ctx.lang, express, true);
+        await ctx.editMessageText(view.text, { reply_markup: view.keyboard }).catch(() => {});
+    });
+
+    // back from the branch list to the Express branches
+    bot.callbackQuery('xr_back', async (ctx) => {
+        const actor = await reportActor(ctx);
+        if (!actor) return;
+        const express = await expressService.getExpressBranches();
+        await ctx.answerCallbackQuery();
+        const view = expressReportTypeView(ctx.lang, express, isAdmin(actor));
         await ctx.editMessageText(view.text, { reply_markup: view.keyboard }).catch(() => {});
     });
 

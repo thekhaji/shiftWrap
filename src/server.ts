@@ -27,6 +27,7 @@ import { startCheckoutReminders } from './libs/utils/reminders';
 import { payrollController } from './controllers/payroll.controller';
 import { groupController } from './controllers/group.controller';
 import { cleaningController } from './controllers/cleaning.controller';
+import ExpressService from './models/Express.service';
 import ProductImageService from './models/ProductImage.service';
 import { expressController, startExpressConfirmations } from './controllers/express.controller';
 
@@ -104,6 +105,7 @@ async function main() {
     await memberService.ensureAdmins(adminTelegramIds());
     startMenuSync(bot);
     startCheckoutReminders(bot);
+    await new ExpressService().migrateSuppliers();   // one supplier per branch became a list
     startExpressConfirmations(bot);
     new ProductImageService().backfill(bot.api).catch((err) => console.error('product image backfill failed:', err));   // photos added before they were kept in the database
 
