@@ -6,3 +6,5 @@ export * from "./member.views";
 export * from "./order.views";
 export * from "./cleaning.views";
 export * from "./express.views";
+
+export * from "./storage.views";

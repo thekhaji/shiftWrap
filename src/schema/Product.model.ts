@@ -6,6 +6,7 @@ const productSchema = new Schema<Product>(
     {
         name: { type: String, required: true, trim: true },
         imageFileId: { type: String },
+        imageReference: { type: String },   // path of the photo inside the server's uploads folder
         category: { type: String, enum: Object.values(ProductCategory), required: true },
         code: { type: String },
         orderLink: { type: String },

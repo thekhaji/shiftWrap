@@ -27,6 +27,7 @@ import { startCheckoutReminders } from './libs/utils/reminders';
 import { payrollController } from './controllers/payroll.controller';
 import { groupController } from './controllers/group.controller';
 import { cleaningController } from './controllers/cleaning.controller';
+import ProductImageService from './models/ProductImage.service';
 import { expressController, startExpressConfirmations } from './controllers/express.controller';
 
 export interface SessionData {
@@ -43,6 +44,7 @@ export interface SessionData {
         orderLink?: string;
         orderNote?: string;
     };
+    editProduct?: { productId: string; field: 'name' | 'link' | 'note' | 'photo'; cardMessageId?: number };   // admin editing one storage product
     cleaning?: {
         place: CleaningPlace;
         albumId?: string;                                   // media_group_id of the album being collected
@@ -103,6 +105,7 @@ async function main() {
     startMenuSync(bot);
     startCheckoutReminders(bot);
     startExpressConfirmations(bot);
+    new ProductImageService().backfill(bot.api).catch((err) => console.error('product image backfill failed:', err));   // photos added before they were kept in the database
 
     // let a deploy or restart finish the update in progress
     const shutdown = async (signal: string) => {

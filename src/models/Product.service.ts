@@ -26,6 +26,28 @@ class ProductService {
         return this.productModel.find({ _id: { $in: ids } }).lean<Product[]>();
     }
 
+    async getProduct(id: string): Promise<Product | null> {
+        if (!Types.ObjectId.isValid(id)) return null;
+        return this.productModel.findOne({ _id: id, isActive: true }).lean<Product>();
+    }
+
+    // admin edit of one field; the photo is only a Telegram file_id, never the image itself
+    async updateProduct(id: string, patch: Partial<Pick<Product, 'name' | 'category' | 'imageFileId' | 'orderLink' | 'orderNote'>>): Promise<Product | null> {
+        if (patch.orderLink && !/^https?:\/\//i.test(patch.orderLink)) throw new Errors(HttpCode.BAD_REQUEST, Message.CREATE_FAILED);
+        try {
+            return await this.productModel.findOneAndUpdate({ _id: id, isActive: true }, { $set: patch }, { new: true }).lean<Product>();
+        } catch (err: any) {
+            if (err.code === 11000) throw new Errors(HttpCode.CONFLICT, Message.EXISTING_PRODUCT);
+            throw err;
+        }
+    }
+
+    // soft delete: old orders keep pointing at it
+    async archiveProduct(id: string): Promise<Product | null> {
+        if (!Types.ObjectId.isValid(id)) return null;
+        return this.productModel.findOneAndUpdate({ _id: id, isActive: true }, { $set: { isActive: false } }, { new: true }).lean<Product>();
+    }
+
     async createProduct(input: ProductInput): Promise<Product> {
         if (!input.orderLink && !input.orderNote) {
             throw new Errors(HttpCode.BAD_REQUEST, Message.CREATE_FAILED); // needs a hint how to buy it

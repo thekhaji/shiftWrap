@@ -15,5 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends fontconfig font
 COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=build /app/dist ./dist
+RUN mkdir -p /app/uploads && chown node:node /app/uploads
+ENV UPLOADS_DIR=/app/uploads
 USER node
 CMD ["node", "dist/server.js"]

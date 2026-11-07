@@ -9,7 +9,8 @@ import { ProductCategory } from '../libs/enums/product.enum';
 import { DEFAULT_LANG, allLabels, t } from '../libs/i18n';
 import { Order } from '../libs/types/order';
 import { OrderStatus } from '../libs/enums/order.enum';
-import { hasManagerPermission, isAssistant, isBossOrAdmin, isManagerOf } from '../libs/utils/permission';
+import { sendProductPhoto } from '../libs/utils/productPhoto';
+import { hasManagerPermission, isAdmin, isAssistant, isBossOrAdmin, isManagerOf } from '../libs/utils/permission';
 import { productCardView, orderCategoryView, orderControlView, orderMessageView, orderReviewView, storageMenuView } from '../views/index';
 
 const memberService = new MemberService();
@@ -30,9 +31,10 @@ export function orderController(bot: Bot<MyContext>) {
     }
 
     // 1. Open the storage menu
-    bot.hears(allLabels('menu.storage'), async (ctx) => {
+    bot.hears(allLabels('menu.storage'), async (ctx, next) => {
         if (!ctx.from) return;
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
+        if (member && isAdmin(member)) return next();   // the admin manages the catalog (product.controller)
         if (!member || !hasManagerPermission(member)) {
             await ctx.reply(t(ctx.lang, 'common.noPermission'));
             return;
@@ -104,18 +106,13 @@ export function orderController(bot: Bot<MyContext>) {
         for (const p of products) {
             const view = productCardView(ctx.lang, p, selected.has(p._id.toString()));
             let msg;
-            if (p.imageFileId) {
-                try {
-                    msg = await ctx.replyWithPhoto(p.imageFileId, {
-                        caption: view.text,
-                        reply_markup: view.keyboard,
-                    });
-                } catch (err) {
-                    console.error(`bad imageFileId for ${p.name}:`, err);
-                    msg = await ctx.reply(view.text, { reply_markup: view.keyboard }); // fall back to text
-                }
-            } else {
-                msg = await ctx.reply(view.text, { reply_markup: view.keyboard });
+            try {
+                msg = await sendProductPhoto(ctx.api, p, (photo) => ctx.replyWithPhoto(photo, {
+                    caption: view.text,
+                    reply_markup: view.keyboard,
+                }));
+            } catch {
+                msg = await ctx.reply(view.text, { reply_markup: view.keyboard }); // no photo, or none that can be sent: text
             }
             sentIds.push(msg.message_id);
         }
@@ -212,18 +209,13 @@ export function orderController(bot: Bot<MyContext>) {
                 const products = await productService.getProductsByIds(order.items.map(i => i.productId));
                 const view = orderMessageView(order, products, member.name);
                 // the new order carries the product photo; ordered / received are text only
-                const photo = products[0]?.imageFileId;
                 const options = { message_thread_id: branch.threadIds.order, reply_markup: view.keyboard };
                 let sent;
-                if (photo) {
-                    try {
-                        sent = await ctx.api.sendPhoto(branch.orderGroupId, photo, { caption: view.text, ...options });
-                    } catch (err) {
-                        console.error(`bad imageFileId for order ${order._id}:`, err);
-                        sent = await ctx.api.sendMessage(branch.orderGroupId, view.text, options); // fall back to text
-                    }
-                } else {
-                    sent = await ctx.api.sendMessage(branch.orderGroupId, view.text, options);
+                try {
+                    if (!products[0]) throw new Error('no product');
+                    sent = await sendProductPhoto(ctx.api, products[0], (photo) => ctx.api.sendPhoto(branch.orderGroupId!, photo, { caption: view.text, ...options }));
+                } catch {
+                    sent = await ctx.api.sendMessage(branch.orderGroupId, view.text, options); // no photo: text
                 }
                 await orderService.setGroupMessageId(order._id, sent.message_id);
             } catch (err) {

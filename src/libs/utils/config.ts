@@ -17,6 +17,12 @@ export function adminTelegramIds(): number[] {
         .filter(id => Number.isInteger(id) && id > 0);
 }
 
+// UPLOADS_DIR=/var/www/shiftwrap/uploads : where product photos are stored on the server
+// (keep it outside the code folder so a deploy never wipes it)
+export function uploadsDir(): string {
+    return process.env.UPLOADS_DIR || `${process.cwd()}/uploads`;
+}
+
 // REPORT_CUTOFF_DAY=25 : from this day of the month on, reports are for the month in progress
 // (employees submit at month end); before it, for the month that just ended (late submitters)
 export function reportCutoffDay(): number {
