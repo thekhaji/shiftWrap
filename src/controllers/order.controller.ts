@@ -342,8 +342,19 @@ export function orderController(bot: Bot<MyContext>) {
                 message_thread_id: branch.threadIds[topic],
                 reply_markup: view.keyboard,
             });
-            if (order.groupMessageId) {
-                await ctx.api.deleteMessage(branch.orderGroupId, order.groupMessageId).catch(() => {});
+            // The old message: the one saved with the order, and the one that was just tapped (they are the same
+            // unless the saved id is missing or stale, e.g. orders placed before it was saved).
+            const tapped = ctx.callbackQuery?.message;
+            const oldIds = new Set<number>();
+            if (order.groupMessageId) oldIds.add(order.groupMessageId);
+            if (tapped && tapped.chat.id === branch.orderGroupId && tapped.message_id !== sent.message_id) oldIds.add(tapped.message_id);
+            for (const id of oldIds) {
+                const deleted = await ctx.api.deleteMessage(branch.orderGroupId, id).then(() => true).catch((err) => {
+                    console.error(`order group: could not delete message ${id} in chat ${branch.orderGroupId} (order ${order._id}): ${err.description ?? err.message}`);
+                    return false;
+                });
+                // at least take the buttons off, so nobody taps a stale copy
+                if (!deleted) await ctx.api.editMessageReplyMarkup(branch.orderGroupId, id, { reply_markup: undefined }).catch(() => {});
             }
             await orderService.setGroupMessageId(order._id, sent.message_id);
             return true;

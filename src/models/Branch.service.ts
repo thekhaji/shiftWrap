@@ -2,6 +2,7 @@ import BranchModel from '../schema/Branch.model';
 import { Branch, BranchInput } from '../libs/types/branch';
 import Errors, { Message, HttpCode } from '../libs/Errors';
 import { Types } from 'mongoose';
+import { checkInRadiusMeters } from '../libs/utils/config';
 
 class BranchService {
     private readonly branchModel;
@@ -91,7 +92,7 @@ class BranchService {
 
         for (const branch of branches) {
             const distance = this.getDistanceMeters(lat, lng, branch.lat, branch.lng);
-            if (distance <= 50 && (!nearest || distance < nearest.distance)) {
+            if (distance <= checkInRadiusMeters() && (!nearest || distance < nearest.distance)) {
                 nearest = { branch, distance };
             }
         }
