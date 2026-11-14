@@ -30,8 +30,8 @@ export function reportCutoffDay(): number {
     return Number.isInteger(day) && day >= 2 && day <= 28 ? day : 25;
 }
 
-// CHECKIN_RADIUS_METERS=10 : how close to a branch an employee must be to check in or out
+// CHECKIN_RADIUS_METERS=20 : how close to a branch an employee must be to check in or out
 export function checkInRadiusMeters(): number {
     const meters = Number(process.env.CHECKIN_RADIUS_METERS);
-    return Number.isFinite(meters) && meters >= 1 && meters <= 500 ? meters : 10;
+    return Number.isFinite(meters) && meters >= 1 && meters <= 500 ? meters : 20;
 }

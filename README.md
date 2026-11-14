@@ -83,5 +83,5 @@ Shift times are stored as **Seoul wall-clock time labeled as UTC**: a check-in a
 | `ERROR_CHAT_ID` | Telegram chat that receives error alerts |
 | `REPORT_CUTOFF_DAY` | optional, default 25: from this day on reports are for the current month, before it for the month that just ended |
 | `UPLOADS_DIR` | folder on the server where product photos are stored (default `./uploads`); in Docker mount a volume on `/app/uploads` so deploys keep it |
-| `CHECKIN_RADIUS_METERS` | optional, default 10: how close to a branch (in meters) an employee must be to check in or out |
+| `CHECKIN_RADIUS_METERS` | optional, default 20: how close to a branch (in meters) an employee must be to check in or out |
 | `DEBUG_UPDATES` | `true` logs every chat id (debugging only) |
