@@ -170,11 +170,11 @@ class MemberService {
         ).lean<Member>();
     }
 
-    // back to a plain employee with no branch
+    // back to a plain employee of the same branch: they stay on its employee list
     async removeManager(telegramId: number): Promise<Member> {
         const member = await this.memberModel.findOneAndUpdate(
             { telegramId },
-            { type: MemberType.USER, $unset: { branchId: '', managerRole: '' } },
+            { type: MemberType.USER, status: MemberStatus.ACTIVE, $unset: { managerRole: '', panel: '' } },
             { new: true }
         );
         if (!member) throw new Errors(HttpCode.NOT_FOUND, Message.NO_DATA_FOUND);
