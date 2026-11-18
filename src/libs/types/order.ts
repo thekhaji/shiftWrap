@@ -4,6 +4,7 @@ import { OrderStatus } from "../enums/order.enum";
 export interface OrderItem {
     productId: Types.ObjectId;
     name: string;               // snapshot at order time
+    qty?: number;               // how many; orders placed before quantities existed have none
 }
 
 export interface Order {

@@ -4,9 +4,9 @@ import { MyContext } from '../server';
 import MemberService from '../models/Member.service';
 import BranchService from '../models/Branch.service';
 import ProductService from '../models/Product.service';
-import OrderService from '../models/Order.service';
+import OrderService, { MAX_ORDER_QTY } from '../models/Order.service';
 import { ProductCategory } from '../libs/enums/product.enum';
-import { DEFAULT_LANG, allLabels, t } from '../libs/i18n';
+import { DEFAULT_LANG, allLabels, allMenuLabels, t } from '../libs/i18n';
 import { Order } from '../libs/types/order';
 import { OrderStatus } from '../libs/enums/order.enum';
 import { sendProductPhoto } from '../libs/utils/productPhoto';
@@ -17,6 +17,7 @@ const memberService = new MemberService();
 const branchService = new BranchService();
 const productService = new ProductService();
 const orderService = new OrderService();
+const allMenuTexts = allMenuLabels();
 
 export function orderController(bot: Bot<MyContext>) {
 
@@ -101,10 +102,11 @@ export function orderController(bot: Bot<MyContext>) {
         await clearBasket(ctx); // removes the category menu
         const draft = await orderService.getOrCreateDraft(member._id, member.branchId);
         const selected = new Set(draft.items.map(i => i.productId.toString()));
+        const quantities = new Map(draft.items.map(i => [i.productId.toString(), i.qty ?? 1]));
 
         const sentIds: number[] = [];
         for (const p of products) {
-            const view = productCardView(ctx.lang, p, selected.has(p._id.toString()));
+            const view = productCardView(ctx.lang, p, selected.has(p._id.toString()), quantities.get(p._id.toString()) ?? 1);
             let msg;
             try {
                 msg = await sendProductPhoto(ctx.api, p, (photo) => ctx.replyWithPhoto(photo, {
@@ -139,10 +141,90 @@ export function orderController(bot: Bot<MyContext>) {
         }
         const draft = await orderService.getOrCreateDraft(member._id, member.branchId);
         const updated = await orderService.toggleItem(draft._id, product);
-        const isSelected = updated.items.some(i => i.productId.toString() === productId);
-        const view = productCardView(ctx.lang, product, isSelected);
+        const item = updated.items.find(i => i.productId.toString() === productId);
+        const view = productCardView(ctx.lang, product, !!item, item?.qty ?? 1);
         await ctx.editMessageReplyMarkup({ reply_markup: view.keyboard });
         await ctx.answerCallbackQuery();
+    });
+
+    // 3b. How many: ➖ / ➕ on a catalog card (c) or in the review (r)
+    async function quantityActor(ctx: MyContext) {
+        const member = ctx.from ? await memberService.getMemberByTelegramId(ctx.from.id) : null;
+        if (!member || !hasManagerPermission(member) || !member.branchId) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort') });
+            return null;
+        }
+        return member;
+    }
+
+    // redraw whatever the quantity was changed on
+    async function showQuantity(ctx: MyContext, member: { _id: Types.ObjectId; branchId?: Types.ObjectId }, draft: Order, productId: string, where: 'c' | 'r', messageId?: number) {
+        const send = async (text: string | null, markup: any) => {
+            const chatId = ctx.chat?.id;
+            if (!chatId || !messageId) return;
+            if (text === null) await ctx.api.editMessageReplyMarkup(chatId, messageId, { reply_markup: markup }).catch(() => {});
+            else await ctx.api.editMessageText(chatId, messageId, text, { reply_markup: markup }).catch(() => {});
+        };
+        if (where === 'r') {
+            const view = orderReviewView(ctx.lang, draft.items);
+            await send(view.text, view.keyboard);
+            return;
+        }
+        const product = (await productService.getActiveProductsByBranch(member.branchId!)).find(p => p._id.toString() === productId);
+        const item = draft.items.find(i => i.productId.toString() === productId);
+        if (!product) return;
+        const view = productCardView(ctx.lang, product, !!item, item?.qty ?? 1);
+        await send(null, view.keyboard);
+    }
+
+    bot.callbackQuery(/^order_q:/, async (ctx) => {
+        const member = await quantityActor(ctx);
+        if (!member) return;
+        const [productId, direction, where] = ctx.callbackQuery.data.split(':')[1].split(',');
+        if (!Types.ObjectId.isValid(productId) || (where !== 'c' && where !== 'r')) return ctx.answerCallbackQuery();
+        const draft = await orderService.getOrCreateDraft(member._id, member.branchId!);
+        const updated = await orderService.adjustQty(draft._id, new Types.ObjectId(productId), direction === 'p' ? 1 : -1);
+        await ctx.answerCallbackQuery();
+        if (updated) await showQuantity(ctx, member, updated, productId, where, ctx.callbackQuery.message?.message_id);
+    });
+
+    // tap the number to type it, e.g. 25
+    bot.callbackQuery(/^order_qe:/, async (ctx) => {
+        const member = await quantityActor(ctx);
+        if (!member) return;
+        const [productId, where] = ctx.callbackQuery.data.split(':')[1].split(',');
+        const messageId = ctx.callbackQuery.message?.message_id;
+        if (!Types.ObjectId.isValid(productId) || (where !== 'c' && where !== 'r') || !messageId) return ctx.answerCallbackQuery();
+        await ctx.answerCallbackQuery();
+        const prompt = await ctx.reply(t(ctx.lang, 'order.qtyAsk'));
+        ctx.session.orderQty = { productId, where, messageId, promptId: prompt.message_id };
+    });
+
+    bot.on('message:text', async (ctx, next) => {
+        const pending = ctx.session.orderQty;
+        if (!pending) return next();
+        const member = await memberService.getMemberByTelegramId(ctx.from.id);
+        if (!member || !hasManagerPermission(member) || !member.branchId) {
+            ctx.session.orderQty = undefined;
+            return next();
+        }
+        const text = ctx.message.text.trim();
+        if (allMenuTexts.has(text)) {
+            ctx.session.orderQty = undefined;
+            return next();
+        }
+        const qty = Number(text);
+        if (!Number.isInteger(qty) || qty < 1 || qty > MAX_ORDER_QTY) {
+            await ctx.reply(t(ctx.lang, 'order.qtyBad', { max: MAX_ORDER_QTY }));
+            return;
+        }
+        const draft = await orderService.getOrCreateDraft(member._id, member.branchId);
+        const updated = await orderService.setQty(draft._id, new Types.ObjectId(pending.productId), qty);
+        ctx.session.orderQty = undefined;
+        // tidy up: the question and the typed number
+        if (pending.promptId) await ctx.api.deleteMessage(ctx.chat.id, pending.promptId).catch(() => {});
+        await ctx.deleteMessage().catch(() => {});
+        if (updated) await showQuantity(ctx, member, updated, pending.productId, pending.where, pending.messageId);
     });
 
     // 4. "Send" opens the review: the chosen products, each removable, then Submit

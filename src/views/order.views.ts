@@ -11,13 +11,14 @@ export function storageMenuView(lang: Lang) {
 }
 
 // one card per product: photo + name + note, with its own select button
-export function productCardView(lang: Lang, product: Product, selected: boolean) {
+export function productCardView(lang: Lang, product: Product, selected: boolean, qty = 1) {
     const lines = [product.name];
     if (product.orderNote) lines.push(product.orderNote);
-    const keyboard = new InlineKeyboard().text(
-        t(lang, selected ? 'order.selected' : 'order.select'),
-        `order_toggle:${product._id.toString()}`
-    );
+    const id = product._id.toString();
+    const keyboard = new InlineKeyboard();
+    // a chosen product shows how many: ➖ and ➕ change it, tapping the number lets you type it
+    if (selected) keyboard.text('➖', `order_q:${id},m,c`).text(`${qty}`, `order_qe:${id},c`).text('➕', `order_q:${id},p,c`).row();
+    keyboard.text(t(lang, selected ? 'order.selected' : 'order.select'), `order_toggle:${id}`);
     return { text: lines.join('\n'), keyboard };
 }
 
@@ -40,7 +41,10 @@ export function orderReviewView(lang: Lang, items: OrderItem[]) {
         keyboard.text(t(lang, 'order.groups'), 'order_categories').row().text(t(lang, 'common.cancel'), 'order_cancel');
         return { text: t(lang, 'order.reviewEmpty'), keyboard };
     }
-    for (const item of items) keyboard.text(`❌ ${item.name}`, `order_rm:${item.productId.toString()}`).row();
+    for (const item of items) {
+        const id = item.productId.toString();
+        keyboard.text('➖', `order_q:${id},m,r`).text(`${item.name.length > 18 ? `${item.name.slice(0, 17)}…` : item.name} × ${item.qty ?? 1}`, `order_qe:${id},r`).text('➕', `order_q:${id},p,r`).text('❌', `order_rm:${id}`).row();
+    }
     keyboard.text(t(lang, 'order.groups'), 'order_categories').text(t(lang, 'order.submit'), 'order_submit').row();
     keyboard.text(t(lang, 'common.cancel'), 'order_cancel');
     return { text: t(lang, 'order.reviewTitle', { n: items.length }), keyboard };
@@ -60,7 +64,8 @@ export function orderMessageView(order: Order, products: Product[], requesterNam
     const lines = order.items.map((item, i) => {
         const p = byId.get(item.productId.toString());
         const hint = p?.orderNote ? ` — ${p.orderNote}` : '';
-        return `${i + 1}. ${item.name}${hint}`;
+        const qty = item.qty ? ` × ${item.qty}` : '';   // orders from before quantities existed have none
+        return `${i + 1}. ${item.name}${qty}${hint}`;
     });
 
     const labels: Record<OrderStatus, string> = {

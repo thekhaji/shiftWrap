@@ -117,9 +117,10 @@ export function cleaningController(bot: Bot<MyContext>) {
             weekStart,
         });
         ctx.session.lastCleaningAlbumId = albumId;
-        ctx.session.cleaning = undefined;
-        const view = await placesView(ctx.lang, member, t(ctx.lang, 'clean.saved'));
-        await ctx.reply(view.text, { reply_markup: view.keyboard });
+        // stay on the same place: confirm, ask for another pair, and offer the way back to the other places
+        ctx.session.cleaning = { place: state.place };
+        const view = cleaningUploadView(ctx.lang, state.place);
+        await ctx.reply(`${t(ctx.lang, 'clean.saved')}\n\n${view.text}`, { reply_markup: view.keyboard });
     });
 
     // text while waiting for a photo

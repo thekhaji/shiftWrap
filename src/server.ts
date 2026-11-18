@@ -57,6 +57,7 @@ export interface SessionData {
     expressProduct?: { branchId: string; step: 'name' | 'price'; name?: string; productId?: string };   // admin adding / repricing an Express product
     expressOrder?: { supplierId: string; qty: Record<string, number>; date?: string };                   // an Express order being put together
     lang?: Lang;                   // chosen before registration finishes
+    orderQty?: { productId: string; where: 'c' | 'r'; messageId: number; promptId?: number };   // typing the quantity of a storage product
     basketMessageIds?: number[];   // message ids of the catalog, so they can be deleted later
 }
 

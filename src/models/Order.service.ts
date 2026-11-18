@@ -5,6 +5,8 @@ import { Product } from '../libs/types/product';
 import { OrderStatus } from '../libs/enums/order.enum';
 import Errors, { HttpCode, Message } from '../libs/Errors';
 
+export const MAX_ORDER_QTY = 9999;
+
 class OrderService {
     private readonly orderModel = OrderModel;
 
@@ -33,11 +35,29 @@ class OrderService {
 
         const added = await this.orderModel.findOneAndUpdate(
             { _id: draftId, status: OrderStatus.DRAFT },
-            { $push: { items: { productId: product._id, name: product.name } } },
+            { $push: { items: { productId: product._id, name: product.name, qty: 1 } } },
             { new: true }
         ).lean<Order>();
         if (!added) throw new Errors(HttpCode.NOT_FOUND, Message.NO_DATA_FOUND);
         return added;
+    }
+
+    // set how many of one product the draft asks for (1 to MAX_ORDER_QTY); null = the product is not in the draft
+    async setQty(draftId: Types.ObjectId, productId: Types.ObjectId, qty: number): Promise<Order | null> {
+        const value = Math.min(MAX_ORDER_QTY, Math.max(1, Math.round(qty)));
+        return this.orderModel.findOneAndUpdate(
+            { _id: draftId, status: OrderStatus.DRAFT, 'items.productId': productId },
+            { $set: { 'items.$.qty': value } },
+            { new: true }
+        ).lean<Order>();
+    }
+
+    // +1 / -1 on one product
+    async adjustQty(draftId: Types.ObjectId, productId: Types.ObjectId, delta: 1 | -1): Promise<Order | null> {
+        const draft = await this.orderModel.findOne({ _id: draftId, status: OrderStatus.DRAFT }).lean<Order>();
+        const item = draft?.items.find(i => i.productId.equals(productId));
+        if (!draft || !item) return null;
+        return this.setQty(draftId, productId, (item.qty ?? 1) + delta);
     }
 
     // DRAFT -> one ORDER per product, so the boss can mark each product separately.

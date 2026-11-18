@@ -25,6 +25,7 @@ export function navigationController(bot: Bot<MyContext>) {
             ctx.session.submitReport = undefined;
             ctx.session.expressProduct = undefined;
             ctx.session.editProduct = undefined;
+            ctx.session.orderQty = undefined;
             ctx.session.addProduct = undefined;
             ctx.session.expressOrder = undefined;
         }

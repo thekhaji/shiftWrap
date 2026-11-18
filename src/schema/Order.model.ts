@@ -12,6 +12,7 @@ const orderSchema = new Schema<Order>(
                 _id: false,
                 productId: { type: Schema.Types.ObjectId, ref: 'Product', required: true },
                 name: { type: String, required: true },
+                qty: { type: Number, min: 1, max: 9999 },
             },
         ],
         orderedBy: { type: Schema.Types.ObjectId, ref: 'Member' },
