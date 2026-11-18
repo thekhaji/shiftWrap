@@ -190,20 +190,41 @@ class ExpressService {
         ).lean<ExpressOrder>();
     }
 
-    // sent, but nobody asked the ordering branch yet, and the day it was needed on is over:
-    // the question goes out the day after the ordered date
+    // not asked yet, and the day it was needed on is over: the ordering branch is asked the day after the ordered date,
+    // whether or not the Express side marked it sent
     async getDueForConfirmation(): Promise<ExpressOrder[]> {
         const today = nowInSeoul();
         const startOfToday = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
         return ExpressOrderModel
-            .find({ status: ExpressOrderStatus.SENT, askedAt: { $exists: false }, neededDate: { $lt: startOfToday } })
+            .find({
+                status: { $in: [ExpressOrderStatus.NEW, ExpressOrderStatus.ASSIGNED, ExpressOrderStatus.SENT] },
+                askedAt: { $exists: false },
+                neededDate: { $lt: startOfToday },
+            })
             .lean<ExpressOrder[]>();
     }
 
     // true only for the call that gets to ask, so the question goes out once
     async claimAsk(orderId: Id): Promise<boolean> {
-        const res = await ExpressOrderModel.updateOne({ _id: orderId, askedAt: { $exists: false } }, { $set: { askedAt: nowInSeoul() } });
+        const res = await ExpressOrderModel.updateOne(
+            { _id: orderId, askedAt: { $exists: false }, status: { $in: [ExpressOrderStatus.NEW, ExpressOrderStatus.ASSIGNED, ExpressOrderStatus.SENT] } },
+            { $set: { askedAt: nowInSeoul() } },
+        );
         return res.modifiedCount > 0;
+    }
+
+    // nobody marked it sent: it counts as sent in full, so the ordering branch can confirm what really arrived
+    async sendAsOrdered(order: ExpressOrder): Promise<ExpressOrder | null> {
+        return ExpressOrderModel.findOneAndUpdate(
+            { _id: order._id, status: { $in: [ExpressOrderStatus.NEW, ExpressOrderStatus.ASSIGNED] } },
+            { $set: { status: ExpressOrderStatus.SENT, sentItems: order.items.map(i => ({ productId: i.productId, qty: i.qty })), sentAt: nowInSeoul() }, $unset: { draft: '' } },
+            { new: true },
+        ).lean<ExpressOrder>();
+    }
+
+    // nobody could be asked (every message failed): let the next run try again
+    async releaseAsk(orderId: Id): Promise<void> {
+        await ExpressOrderModel.updateOne({ _id: orderId, status: ExpressOrderStatus.SENT }, { $unset: { askedAt: '' } });
     }
 
     // the ordering branch confirmed the quantities: the order is final and is charged to the branch

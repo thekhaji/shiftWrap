@@ -244,13 +244,14 @@ export function expressQtyEditorView(lang: Lang, order: ExpressOrder, draft: Qty
 }
 
 // the next-day question to the ordering branch
-export function expressConfirmView(lang: Lang, order: ExpressOrder, d: { supplier: string; sender: string }) {
+export function expressConfirmView(lang: Lang, order: ExpressOrder, d: { supplier: string; sender?: string }) {
     const id = order._id.toString();
     const sent = withQty(order.items, order.sentItems);
     const keyboard = new InlineKeyboard()
         .text(t(lang, 'xc.btnOk'), `xc_ok:${id}`).row()
         .text(t(lang, 'xc.btnChange'), `xc_chg:${id}`);
-    return { text: t(lang, 'xc.ask', { supplier: d.supplier, name: d.sender, list: listText(sent), total: money(orderTotal(sent)) }), keyboard };
+    const params = { supplier: d.supplier, list: listText(sent), total: money(orderTotal(sent)) };
+    return { text: d.sender ? t(lang, 'xc.ask', { ...params, name: d.sender }) : t(lang, 'xc.askNoSender', params), keyboard };
 }
 
 // ---------------- admin report (inside Express settings) ----------------

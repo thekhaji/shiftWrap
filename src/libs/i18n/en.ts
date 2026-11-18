@@ -421,6 +421,7 @@ export const en: Record<TranslationKey, string> = {
     'xe.notYours': "Only the tagged employee can do this.",
     'xe.alreadyDone': "This order was already handled.",
     'xc.ask': "📦 The Express order from {supplier} was sent.\nSent by: {name}\n\n{list}\n\nTotal: {total} won\n\nDid you receive exactly these quantities?",
+    'xc.askNoSender': "📦 Your Express order from {supplier} was due.\n\n{list}\n\nTotal: {total} won\n\nDid you receive exactly these quantities?",
     'xc.btnOk': "✅ Yes, correct",
     'xc.btnChange': "✏️ No, change quantities",
     'xc.editTitle': "✏️ Set the quantities you really received, then press Confirm.\n\n{list}",

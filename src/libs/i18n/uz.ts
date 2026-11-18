@@ -434,6 +434,7 @@ export const uz = {
     'xe.notYours': "Buni faqat belgilangan xodim qila oladi.",
     'xe.alreadyDone': "Bu buyurtma allaqachon bajarilgan.",
     'xc.ask': "📦 {supplier}dan Express buyurtma yuborildi.\nYuborgan: {name}\n\n{list}\n\nJami: {total} won\n\nAynan shu miqdorlarni oldingizmi?",
+    'xc.askNoSender': "📦 {supplier}dan Express buyurtmangizning sanasi o'tdi.\n\n{list}\n\nJami: {total} won\n\nAynan shu miqdorlarni oldingizmi?",
     'xc.btnOk': "✅ Ha, to'g'ri",
     'xc.btnChange': "✏️ Yo'q, miqdorni o'zgartirish",
     'xc.editTitle': "✏️ Haqiqatda olgan miqdorlaringizni belgilang, so'ng «Tasdiqlash»ni bosing.\n\n{list}",

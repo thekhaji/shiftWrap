@@ -922,20 +922,30 @@ export function expressController(bot: Bot<MyContext>) {
     });
 }
 
-// Sent on an earlier day and not yet asked: from 09:00 the ordering branch is asked whether the sent quantities arrived.
+// The day after the needed date, from 09:00, the ordering branch's managers and assistants are asked whether the order arrived in full;
+// their answer is what is charged. An order the Express side never marked sent counts as sent in full.
 export function startExpressConfirmations(bot: Bot<MyContext>) {
     async function run() {
         try {
             if (nowInSeoul().getUTCHours() < ASK_FROM_HOUR) return;
             for (const order of await expressService.getDueForConfirmation()) {
                 if (!(await expressService.claimAsk(order._id))) continue; // another run got there first
-                const supplier = await branchService.getBranchById(order.supplierBranchId);
-                const sender = order.assignedTo ? await memberService.getMemberById(order.assignedTo) : null;
-                for (const m of await staffOf(order.orderBranchId)) {
-                    const view = expressConfirmView(m.language ?? DEFAULT_LANG, order, { supplier: supplier?.name ?? '—', sender: sender?.name ?? '—' });
-                    await bot.api.sendMessage(m.telegramId, view.text, { reply_markup: view.keyboard })
-                        .catch((err) => console.error(`express confirmation request to ${m.telegramId} failed:`, err));
+                // never marked sent: it counts as sent in full, and the branch says what really arrived
+                const asked = order.status === ExpressOrderStatus.SENT ? order : (await expressService.sendAsOrdered(order)) ?? await expressService.getOrder(order._id);
+                if (!asked || asked.status !== ExpressOrderStatus.SENT) continue;
+                const supplier = await branchService.getBranchById(asked.supplierBranchId);
+                const sender = asked.sentAt && asked.assignedTo ? await memberService.getMemberById(asked.assignedTo) : null;
+                let reached = 0;
+                const staff = await staffOf(order.orderBranchId);
+                for (const m of staff) {
+                    const view = expressConfirmView(m.language ?? DEFAULT_LANG, asked, { supplier: supplier?.name ?? '—', sender: sender?.name });
+                    const ok = await bot.api.sendMessage(m.telegramId, view.text, { reply_markup: view.keyboard })
+                        .then(() => true)
+                        .catch((err) => { console.error(`express confirmation request to ${m.telegramId} failed: ${err.description ?? err.message}`); return false; });
+                    if (ok) reached++;
                 }
+                console.log(`express confirmation: order ${order._id} asked ${reached} of ${staff.length} people`);
+                if (reached === 0) await expressService.releaseAsk(order._id);   // nobody got it: try again at the next run
             }
         } catch (err) {
             console.error('express confirmation run failed:', err);

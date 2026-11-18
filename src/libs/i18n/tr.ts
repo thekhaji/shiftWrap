@@ -421,6 +421,7 @@ export const tr: Record<TranslationKey, string> = {
     'xe.notYours': "Bunu yalnızca etiketlenen çalışan yapabilir.",
     'xe.alreadyDone': "Bu sipariş zaten işlendi.",
     'xc.ask': "📦 {supplier} şubesinden Express sipariş gönderildi.\nGönderen: {name}\n\n{list}\n\nToplam: {total} won\n\nTam olarak bu miktarları aldınız mı?",
+    'xc.askNoSender': "📦 {supplier} Express siparişinizin tarihi geldi.\n\n{list}\n\nToplam: {total} won\n\nTam olarak bu miktarları teslim aldınız mı?",
     'xc.btnOk': "✅ Evet, doğru",
     'xc.btnChange': "✏️ Hayır, miktarı değiştir",
     'xc.editTitle': "✏️ Gerçekte aldığınız miktarları ayarlayın, sonra «Onayla»ya basın.\n\n{list}",
