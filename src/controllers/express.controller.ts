@@ -17,7 +17,7 @@ import { nowInSeoul } from '../libs/utils/time';
 import { listText, MAX_QTY, money, orderTotal, sameQuantities, withQty } from '../libs/utils/expressMath';
 import { buildExpressReceipt, branchLines } from '../libs/utils/expressReport';
 import {
-    expressAccessListView, expressAccessView, expressSupplierPickView, expressBranchView, expressDriversView, expressDriverView, expressGroupPickerView,
+    expressAccessListView, expressAccessView, expressSupplierPickView, expressBranchView, expressDriversView, expressDriverDigestView, expressGroupReminderView, expressGroupPickerView,
     expressSettingsView, expressTypePickerView, expressConfirmView, expressDateView, expressNoticeView, expressPickView, expressProductCardView,
     expressProductsView, expressQtyEditorView, expressReportBranchView, expressReportMonthView, expressReportTypeView,
     expressReviewView, expressStaffPickerView, expressTaskView, typeName,
@@ -30,13 +30,12 @@ const groupService = new GroupService();
 const inviteService = new InviteService();
 
 const CHECK_EVERY_MS = 10 * 60 * 1000;
+const REMIND_FROM_HOUR = 9;         // on the needed day, drivers and the Express group hear about it from 09:00 Seoul time
 const ASK_FROM_HOUR = 9;            // the next-day confirmation question goes out from 09:00 Seoul time
 const MAX_PRICE = 100_000_000;
 
 const oid = (text: string) => (Types.ObjectId.isValid(text) ? new Types.ObjectId(text) : null);
 const isExpressType = (text: string): text is ExpressType => (Object.values(ExpressType) as string[]).includes(text);
-const fullQuantities = (order: ExpressOrder): QtyItem[] => order.items.map(i => ({ productId: i.productId, qty: i.qty }));
-const totalQty = (items: QtyItem[]) => items.reduce((sum, i) => sum + i.qty, 0);
 
 // the manager and assistants of a branch; with none, bosses and admins
 async function staffOf(branchId: Types.ObjectId): Promise<Member[]> {
@@ -61,9 +60,8 @@ export async function sendExpressNotice(api: Api, member: Member, order: Express
         .catch((err) => console.error(`express notice to ${member.telegramId} failed:`, err));
 }
 
-// A new order reaches the Express branch group (managers tag who sends from there), and every driver
-// of that branch gets it: "from <Express> to <branch>" with the products. With no group set,
-// the managers get it in private instead.
+// A new order reaches the Express branch group right away (managers tag who sends from there).
+// With no group set, the managers get it in private instead. Drivers hear about it on the day it is needed.
 async function deliverOrder(api: Api, supplier: Branch, order: ExpressOrder): Promise<void> {
     let inGroup = false;
     if (supplier.expressGroupId !== undefined) {
@@ -73,20 +71,6 @@ async function deliverOrder(api: Api, supplier: Branch, order: ExpressOrder): Pr
             .catch((err) => { console.error(`express order to group ${supplier.expressGroupId} failed:`, err); return false; });
     }
     if (!inGroup) for (const m of await staffOf(supplier._id)) await sendExpressNotice(api, m, order);
-
-    const ordering = await branchService.getBranchById(order.orderBranchId);
-    for (const d of await memberService.getDrivers()) {
-        const view = expressDriverView(d.language ?? DEFAULT_LANG, order, { from: supplier.name, to: ordering?.name ?? '—' });
-        await api.sendMessage(d.telegramId, view.text)
-            .catch((err) => console.error(`express order to driver ${d.telegramId} failed:`, err));
-    }
-}
-
-async function notifyStaff(api: Api, branchId: Types.ObjectId, text: (lang: Lang) => string): Promise<void> {
-    for (const m of await staffOf(branchId)) {
-        await api.sendMessage(m.telegramId, text(m.language ?? DEFAULT_LANG))
-            .catch((err) => console.error(`express message to ${m.telegramId} failed:`, err));
-    }
 }
 
 // the next days an order can be needed on (Seoul calendar days, stored as midnight UTC)
@@ -651,75 +635,30 @@ export function expressController(bot: Bot<MyContext>) {
         await ctx.editMessageText(t(ctx.lang, 'xe.tagged', { name: assignee.name })).catch(() => {});
         const branch = await branchService.getBranchById(assigned.orderBranchId);
         const view = expressTaskView(assignee.language ?? DEFAULT_LANG, assigned, branch?.name ?? '—');
-        await ctx.api.sendMessage(assignee.telegramId, view.text, { reply_markup: view.keyboard })
+        await ctx.api.sendMessage(assignee.telegramId, view.text)
             .catch((err) => console.error(`express task to ${assignee.telegramId} failed:`, err));
     });
 
-    // sent: remember it, tell the Express managers; the ordering branch is asked the next day
-    async function finishSending(ctx: MyContext, member: Member, order: ExpressOrder, quantities: QtyItem[]) {
-        const sent = await expressService.markSent(order._id, member._id, quantities);
-        if (!sent) {
-            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'xe.alreadyDone'), show_alert: true });
-            return;
-        }
-        await ctx.answerCallbackQuery();
-        const branch = await branchService.getBranchById(sent.orderBranchId);
-        const branchName = branch?.name ?? '—';
-        await ctx.editMessageText(t(ctx.lang, 'xe.markedSent', { branch: branchName })).catch(() => {});
-        await notifyStaff(ctx.api, sent.supplierBranchId, (lang) => t(lang, 'xe.sentNotice', { name: member.name, branch: branchName }));
-    }
-
-    bot.callbackQuery(/^xe_full:/, async (ctx) => {
-        const loaded = await loadOrder(ctx, ctx.callbackQuery.data.split(':')[1]);
-        if (!loaded) return;
-        if (!loaded.order.assignedTo?.equals(loaded.member._id)) {
-            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'xe.notYours'), show_alert: true });
-            return;
-        }
-        await finishSending(ctx, loaded.member, loaded.order, fullQuantities(loaded.order));
-    });
-
-    bot.callbackQuery(/^xe_chg:/, async (ctx) => {
-        const loaded = await loadOrder(ctx, ctx.callbackQuery.data.split(':')[1]);
-        if (!loaded) return;
-        const { member, order } = loaded;
-        if (!order.assignedTo?.equals(member._id)) {
-            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'xe.notYours'), show_alert: true });
-            return;
-        }
-        const drafted = await expressService.startDraft(order._id, ExpressOrderStatus.ASSIGNED, fullQuantities(order));
-        if (!drafted) {
-            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'xe.alreadyDone'), show_alert: true });
-            return;
-        }
-        await ctx.answerCallbackQuery();
-        const branch = await branchService.getBranchById(drafted.orderBranchId);
-        const view = expressQtyEditorView(ctx.lang, drafted, drafted.draft ?? [], 'send', branch?.name ?? '—');
-        await ctx.editMessageText(view.text, { reply_markup: view.keyboard }).catch(() => {});
-    });
-
-    // one editor for both stages: who may use it depends on the order's status
+    // the ➖ ➕ editor: the ordering branch's managers set what they really received
     bot.callbackQuery(/^xq:/, async (ctx) => {
         const [orderId, productId, direction] = ctx.callbackQuery.data.split(':')[1].split(',');
         const loaded = await loadOrder(ctx, orderId);
         const product = oid(productId);
         if (!loaded || !product) return;
         const { member, order } = loaded;
-        const sending = order.status === ExpressOrderStatus.ASSIGNED;
-        const receiving = order.status === ExpressOrderStatus.SENT;
-        if ((!sending && !receiving) || !order.draft) {
+        if (order.status !== ExpressOrderStatus.SENT || !order.draft) {
             await ctx.answerCallbackQuery({ text: t(ctx.lang, 'xe.alreadyDone'), show_alert: true });
             return;
         }
-        if ((sending && !order.assignedTo?.equals(member._id)) || (receiving && !isOrderingStaff(member, order))) {
-            await ctx.answerCallbackQuery({ text: sending ? t(ctx.lang, 'xe.notYours') : t(ctx.lang, 'common.noPermissionShort'), show_alert: true });
+        if (!isOrderingStaff(member, order)) {
+            await ctx.answerCallbackQuery({ text: t(ctx.lang, 'common.noPermissionShort'), show_alert: true });
             return;
         }
         const updated = await expressService.adjustDraft(order._id, product, direction === 'p' ? 1 : -1);
         if (!updated) return;
         await ctx.answerCallbackQuery();
-        const branch = await branchService.getBranchById(sending ? updated.orderBranchId : updated.supplierBranchId);
-        const view = expressQtyEditorView(ctx.lang, updated, updated.draft ?? [], sending ? 'send' : 'receive', branch?.name ?? '—');
+        const branch = await branchService.getBranchById(updated.supplierBranchId);
+        const view = expressQtyEditorView(ctx.lang, updated, updated.draft ?? [], branch?.name ?? '—');
         await ctx.editMessageText(view.text, { reply_markup: view.keyboard }).catch(() => {});
     });
 
@@ -727,21 +666,8 @@ export function expressController(bot: Bot<MyContext>) {
         const loaded = await loadOrder(ctx, ctx.callbackQuery.data.split(':')[1]);
         if (!loaded) return;
         const { member, order } = loaded;
-        const draft = order.draft ?? [];
-        if (order.status === ExpressOrderStatus.ASSIGNED) {
-            if (!order.assignedTo?.equals(member._id)) {
-                await ctx.answerCallbackQuery({ text: t(ctx.lang, 'xe.notYours'), show_alert: true });
-                return;
-            }
-            if (totalQty(draft) === 0) {
-                await ctx.answerCallbackQuery({ text: t(ctx.lang, 'xe.nothing'), show_alert: true });
-                return;
-            }
-            await finishSending(ctx, member, order, draft);
-            return;
-        }
         if (order.status === ExpressOrderStatus.SENT && isOrderingStaff(member, order)) {
-            await finishConfirming(ctx, member, order, draft);
+            await finishConfirming(ctx, member, order, order.draft ?? []);
             return;
         }
         await ctx.answerCallbackQuery({ text: t(ctx.lang, 'xe.alreadyDone'), show_alert: true });
@@ -769,8 +695,8 @@ export function expressController(bot: Bot<MyContext>) {
         for (const r of recipients.values()) {
             const lang = r.language ?? DEFAULT_LANG;
             const text = same
-                ? t(lang, 'xc.confirmedNotice', { branch: branch?.name ?? '—', total })
-                : t(lang, 'xc.differsNotice', { branch: branch?.name ?? '—', list: listText(items), total });
+                ? t(lang, 'xc.confirmedNotice', { branch: branch?.name ?? '—' })
+                : t(lang, 'xc.differsNotice', { branch: branch?.name ?? '—', list: listText(items, false) });   // the Express side never sees prices
             await ctx.api.sendMessage(r.telegramId, text).catch((err) => console.error(`express confirmation to ${r.telegramId} failed:`, err));
         }
     }
@@ -798,7 +724,7 @@ export function expressController(bot: Bot<MyContext>) {
         if (!drafted) return;
         await ctx.answerCallbackQuery();
         const supplier = await branchService.getBranchById(drafted.supplierBranchId);
-        const view = expressQtyEditorView(ctx.lang, drafted, drafted.draft ?? [], 'receive', supplier?.name ?? '—');
+        const view = expressQtyEditorView(ctx.lang, drafted, drafted.draft ?? [], supplier?.name ?? '—');
         await ctx.editMessageText(view.text, { reply_markup: view.keyboard }).catch(() => {});
     });
 
@@ -949,6 +875,87 @@ export function startExpressConfirmations(bot: Bot<MyContext>) {
             }
         } catch (err) {
             console.error('express confirmation run failed:', err);
+        }
+    }
+    run();
+    setInterval(run, CHECK_EVERY_MS).unref();
+}
+
+// On the day an order is needed (from 09:00 Seoul time):
+// - every driver gets that day's deliveries, one message per Express branch;
+// - the Express branch group is reminded of the orders nobody has marked sent yet.
+// Orders are placed days ahead, so this is what keeps the day from being forgotten.
+export function startExpressReminders(bot: Bot<MyContext>) {
+    const CHUNK = 10;   // stops per message, so a long day never hits Telegram's message length limit
+    const chunks = <T,>(list: T[]) => Array.from({ length: Math.ceil(list.length / CHUNK) }, (_, i) => list.slice(i * CHUNK, (i + 1) * CHUNK));
+
+    async function run() {
+        try {
+            if (nowInSeoul().getUTCHours() < REMIND_FROM_HOUR) return;
+            const orders = await expressService.getNeededToday();
+            if (orders.length === 0) return;
+            const names = new Map<string, string>();
+            const nameOf = async (id: Types.ObjectId) => {
+                if (!names.has(id.toString())) names.set(id.toString(), (await branchService.getBranchById(id))?.name ?? '—');
+                return names.get(id.toString())!;
+            };
+            const bySupplier = new Map<string, ExpressOrder[]>();
+            for (const o of orders) bySupplier.set(o.supplierBranchId.toString(), [...(bySupplier.get(o.supplierBranchId.toString()) ?? []), o]);
+
+            for (const [supplierId, supplierOrders] of bySupplier) {
+                const supplier = await branchService.getBranchById(new Types.ObjectId(supplierId));
+                if (!supplier) continue;
+                const day = supplierOrders[0].neededDate;
+
+                // drivers: today's deliveries
+                const fresh: ExpressOrder[] = [];
+                for (const o of supplierOrders) if (!o.driverNotifiedAt && await expressService.claimNotice(o._id, 'driverNotifiedAt')) fresh.push(o);
+                if (fresh.length > 0) {
+                    const stops = await Promise.all(fresh.map(async o => ({ to: await nameOf(o.orderBranchId), order: o })));
+                    let reached = 0;
+                    for (const d of await memberService.getDrivers()) {
+                        for (const part of chunks(stops)) {
+                            const view = expressDriverDigestView(d.language ?? DEFAULT_LANG, supplier.name, day, part);
+                            const ok = await bot.api.sendMessage(d.telegramId, view.text).then(() => true)
+                                .catch((err) => { console.error(`express deliveries to driver ${d.telegramId} failed: ${err.description ?? err.message}`); return false; });
+                            if (ok) reached++;
+                        }
+                    }
+                    console.log(`express deliveries: ${supplier.name}, ${fresh.length} order(s), reached ${reached} message(s)`);
+                    if (reached === 0) await expressService.releaseNotice(fresh.map(o => o._id), 'driverNotifiedAt');
+                }
+
+                // the Express group: what still has to be sent today
+                const unsent = supplierOrders.filter(o => !o.groupRemindedAt && o.status !== ExpressOrderStatus.SENT);
+                const toRemind: ExpressOrder[] = [];
+                for (const o of unsent) if (await expressService.claimNotice(o._id, 'groupRemindedAt')) toRemind.push(o);
+                if (toRemind.length > 0) {
+                    const stops = await Promise.all(toRemind.map(async o => ({
+                        to: await nameOf(o.orderBranchId), order: o,
+                        responsible: await (async () => { const m = o.assignedTo ? await memberService.getMemberById(o.assignedTo) : null; return m ? { name: m.name, telegramId: m.telegramId } : undefined; })(),
+                    })));
+                    let reached = 0;
+                    for (const part of chunks(stops)) {
+                        const view = expressGroupReminderView(DEFAULT_LANG, supplier.name, day, part);
+                        if (supplier.expressGroupId !== undefined) {
+                            const ok = await bot.api.sendMessage(supplier.expressGroupId, view.text, { parse_mode: 'HTML' }).then(() => true)
+                                .catch((err) => { console.error(`express reminder to group ${supplier.expressGroupId} failed: ${err.description ?? err.message}`); return false; });
+                            if (ok) reached++;
+                        } else {
+                            // no group: the Express managers get it in private
+                            for (const m of await staffOf(supplier._id)) {
+                                const own = expressGroupReminderView(m.language ?? DEFAULT_LANG, supplier.name, day, part);
+                                const ok = await bot.api.sendMessage(m.telegramId, own.text, { parse_mode: 'HTML' }).then(() => true).catch(() => false);
+                                if (ok) reached++;
+                            }
+                        }
+                    }
+                    console.log(`express reminder: ${supplier.name}, ${toRemind.length} order(s), reached ${reached} message(s)`);
+                    if (reached === 0) await expressService.releaseNotice(toRemind.map(o => o._id), 'groupRemindedAt');
+                }
+            }
+        } catch (err) {
+            console.error('express reminder run failed:', err);
         }
     }
     run();

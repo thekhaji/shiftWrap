@@ -181,15 +181,6 @@ class ExpressService {
         ).lean<ExpressOrder>();
     }
 
-    // the tagged employee sent it: nothing but a still-assigned order can be marked sent, and only once
-    async markSent(orderId: Id, memberId: Id, quantities: QtyItem[]): Promise<ExpressOrder | null> {
-        return ExpressOrderModel.findOneAndUpdate(
-            { _id: orderId, status: ExpressOrderStatus.ASSIGNED, assignedTo: memberId },
-            { $set: { status: ExpressOrderStatus.SENT, sentItems: quantities, sentAt: nowInSeoul() }, $unset: { draft: '' } },
-            { new: true }
-        ).lean<ExpressOrder>();
-    }
-
     // not asked yet, and the day it was needed on is over: the ordering branch is asked the day after the ordered date,
     // whether or not the Express side marked it sent
     async getDueForConfirmation(): Promise<ExpressOrder[]> {
@@ -220,6 +211,28 @@ class ExpressService {
             { $set: { status: ExpressOrderStatus.SENT, sentItems: order.items.map(i => ({ productId: i.productId, qty: i.qty })), sentAt: nowInSeoul() }, $unset: { draft: '' } },
             { new: true },
         ).lean<ExpressOrder>();
+    }
+
+    // orders needed today (Seoul day) that are not confirmed yet: what drivers deliver and the Express branch sends
+    async getNeededToday(): Promise<ExpressOrder[]> {
+        const now = nowInSeoul();
+        const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+        const end = new Date(start.getTime() + 86_400_000);
+        return ExpressOrderModel
+            .find({ neededDate: { $gte: start, $lt: end }, status: { $in: [ExpressOrderStatus.NEW, ExpressOrderStatus.ASSIGNED, ExpressOrderStatus.SENT] } })
+            .sort({ createdAt: 1 })
+            .lean<ExpressOrder[]>();
+    }
+
+    // true only for the call that gets to send it, so the reminder goes out once per order
+    async claimNotice(orderId: Id, field: 'driverNotifiedAt' | 'groupRemindedAt'): Promise<boolean> {
+        const res = await ExpressOrderModel.updateOne({ _id: orderId, [field]: { $exists: false } }, { $set: { [field]: nowInSeoul() } });
+        return res.modifiedCount > 0;
+    }
+
+    // nobody was reached: allow the next run to try again
+    async releaseNotice(orderIds: Id[], field: 'driverNotifiedAt' | 'groupRemindedAt'): Promise<void> {
+        await ExpressOrderModel.updateMany({ _id: { $in: orderIds } }, { $unset: { [field]: '' } });
     }
 
     // nobody could be asked (every message failed): let the next run try again

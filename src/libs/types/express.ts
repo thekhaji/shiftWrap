@@ -35,6 +35,8 @@ export interface ExpressOrder {
     sentItems?: QtyItem[];
     sentAt?: Date;
     askedAt?: Date;                     // the ordering branch was asked to confirm
+    driverNotifiedAt?: Date;            // the drivers were told on the needed day
+    groupRemindedAt?: Date;             // the Express group was reminded on the needed day
     receivedItems?: QtyItem[];
     receivedAt?: Date;
     receivedBy?: Types.ObjectId;

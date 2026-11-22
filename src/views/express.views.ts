@@ -116,13 +116,27 @@ export function expressSupplierPickView(lang: Lang, suppliers: Branch[]) {
     return { text: t(lang, 'xo.pickSupplier'), keyboard };
 }
 
-// what the driver gets for every new order
-export function expressDriverView(lang: Lang, order: ExpressOrder, names: { from: string; to: string }) {
-    const text = t(lang, 'xs.driverOrder', {
-        from: names.from, to: names.to, date: dayLabel(lang, order.neededDate),
-        list: listText(order.items, false),
-    });
-    return { text };
+// the lines of one stop: where the products go and what they are
+const stopItems = (order: ExpressOrder) => order.items.map(i => `• ${i.name} × ${i.qty}`).join('\n');
+
+// what a driver gets on the day: every order of one Express branch that must arrive today
+export function expressDriverDigestView(lang: Lang, from: string, day: Date, stops: { to: string; order: ExpressOrder }[]) {
+    const list = stops.map((s, i) => `${i + 1}. ${t(lang, 'xs.driverStop', { to: s.to })}\n${stopItems(s.order)}`).join('\n\n');
+    return { text: t(lang, 'xs.driverDigest', { from, date: dayLabel(lang, day), list }) };
+}
+
+const esc = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// what the Express group is reminded of on the day: orders that still have to be sent.
+// The text is HTML (send it with parse_mode HTML): the tagged person is a real mention, so they are notified.
+export function expressGroupReminderView(lang: Lang, from: string, day: Date, stops: { to: string; order: ExpressOrder; responsible?: { name: string; telegramId: number } }[]) {
+    const list = stops.map((s, i) => {
+        const mention = s.responsible ? `<a href="tg://user?id=${s.responsible.telegramId}">${esc(s.responsible.name)}</a>` : '';
+        const state = s.responsible ? t(lang, 'xs.stateTagged', { name: mention }) : t(lang, 'xs.stateNew');
+        const items = s.order.items.map(it => `• ${esc(it.name)} × ${it.qty}`).join('\n');
+        return `${i + 1}. ${esc(t(lang, 'xs.driverStop', { to: s.to }))}\n${state}\n${items}`;
+    }).join('\n\n');
+    return { text: t(lang, 'xs.groupReminder', { from: esc(from), date: dayLabel(lang, day), list }) };
 }
 
 export function expressProductsView(lang: Lang, branch: Branch, products: ExpressProduct[]) {
@@ -201,7 +215,7 @@ export function expressNoticeView(lang: Lang, order: ExpressOrder, d: { branch: 
     }
     let text = t(lang, 'xe.new', {
         branch: d.branch, name: d.requester, date: dayLabel(lang, order.neededDate),
-        list: listText(order.items), total: money(orderTotal(order.items)),
+        list: listText(order.items, false),
     });
     if (d.responsible) text += `\n\n${t(lang, 'xe.responsible', { name: d.responsible })}`;
     return { text, keyboard };
@@ -213,20 +227,13 @@ export function expressStaffPickerView(lang: Lang, order: ExpressOrder, staff: M
     return { text: t(lang, 'xe.pickWho'), keyboard };
 }
 
-// what the tagged employee receives
+// what the tagged employee receives: just who is responsible for which order, nothing to press
 export function expressTaskView(lang: Lang, order: ExpressOrder, branchName: string) {
-    const id = order._id.toString();
-    const keyboard = new InlineKeyboard()
-        .text(t(lang, 'xe.btnFull'), `xe_full:${id}`).row()
-        .text(t(lang, 'xe.btnChange'), `xe_chg:${id}`);
-    return {
-        text: t(lang, 'xe.task', { branch: branchName, date: dayLabel(lang, order.neededDate), list: listText(order.items) }),
-        keyboard,
-    };
+    return { text: t(lang, 'xe.task', { branch: branchName, date: dayLabel(lang, order.neededDate), list: listText(order.items, false) }) };
 }
 
-// +/- editor used twice: the Express employee sets what is sent, the ordering manager what was received
-export function expressQtyEditorView(lang: Lang, order: ExpressOrder, draft: QtyItem[], stage: 'send' | 'receive', branchName: string) {
+// +/- editor: the ordering manager sets what was really received
+export function expressQtyEditorView(lang: Lang, order: ExpressOrder, draft: QtyItem[], branchName: string) {
     const id = order._id.toString();
     const items = withQty(order.items, draft);
     const keyboard = new InlineKeyboard();
@@ -238,9 +245,9 @@ export function expressQtyEditorView(lang: Lang, order: ExpressOrder, draft: Qty
             .text('➕', `xq:${id},${pid},p`)
             .row();
     }
-    keyboard.text(t(lang, stage === 'send' ? 'xe.btnSent' : 'xc.btnConfirm'), `xdone:${id}`);
+    keyboard.text(t(lang, 'xc.btnConfirm'), `xdone:${id}`);
     const list = listText(items, false, true);
-    return { text: t(lang, stage === 'send' ? 'xe.editTitle' : 'xc.editTitle', { branch: branchName, list }), keyboard };
+    return { text: t(lang, 'xc.editTitle', { branch: branchName, list }), keyboard };
 }
 
 // the next-day question to the ordering branch

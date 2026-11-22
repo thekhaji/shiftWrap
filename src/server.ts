@@ -29,7 +29,7 @@ import { groupController } from './controllers/group.controller';
 import { cleaningController } from './controllers/cleaning.controller';
 import ExpressService from './models/Express.service';
 import ProductImageService from './models/ProductImage.service';
-import { expressController, startExpressConfirmations } from './controllers/express.controller';
+import { expressController, startExpressConfirmations, startExpressReminders } from './controllers/express.controller';
 
 export interface SessionData {
     awaitingAction?: "checkin" | "checkout" | "register_branch_name" | "register_branch_location" | "edit_member_field";
@@ -108,6 +108,7 @@ async function main() {
     startCheckoutReminders(bot);
     await new ExpressService().migrateSuppliers();   // one supplier per branch became a list
     startExpressConfirmations(bot);
+    startExpressReminders(bot);
     new ProductImageService().backfill(bot.api).catch((err) => console.error('product image backfill failed:', err));   // photos added before they were kept in the database
 
     // let a deploy or restart finish the update in progress

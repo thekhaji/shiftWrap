@@ -24,6 +24,8 @@ const expressOrderSchema = new Schema(
         sentItems: [qtyItem],
         sentAt: { type: Date },
         askedAt: { type: Date },
+        driverNotifiedAt: { type: Date },
+        groupRemindedAt: { type: Date },
         receivedItems: [qtyItem],
         receivedAt: { type: Date },
         receivedBy: { type: Schema.Types.ObjectId, ref: 'Member' },
@@ -33,5 +35,6 @@ const expressOrderSchema = new Schema(
 
 expressOrderSchema.index({ supplierBranchId: 1, status: 1 });
 expressOrderSchema.index({ status: 1, askedAt: 1, sentAt: 1 });
+expressOrderSchema.index({ neededDate: 1, status: 1 });
 
 export default mongoose.model<ExpressOrder>('ExpressOrder', expressOrderSchema);
