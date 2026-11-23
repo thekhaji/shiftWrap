@@ -31,6 +31,7 @@ export function expressSettingsView(lang: Lang, held: Partial<Record<ExpressType
         else keyboard.text(t(lang, 'xs.choose', { type: typeName(lang, type) }), `xs_pick:${type}`).row();
     }
     keyboard.text(t(lang, 'xs.access'), 'xs_acc').row();
+    keyboard.text(t(lang, 'gr.button'), 'gr_l').row();
     keyboard.text(t(lang, 'xs.inviteDriver'), 'xs_inv').row();
     if (drivers.length) keyboard.text(t(lang, 'xs.drivers'), 'xs_d').row();
     keyboard.text(t(lang, 'xs.reports'), 'xs_rep');

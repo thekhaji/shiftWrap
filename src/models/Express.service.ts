@@ -81,12 +81,13 @@ class ExpressService {
     async getCandidates(): Promise<Branch[]> {
         return BranchModel.find({
             express: { $exists: false },
+            guest: { $ne: true },
             $or: [{ expressSupplierIds: { $exists: false } }, { expressSupplierIds: { $size: 0 } }],
         }).sort({ name: 1 }).lean<Branch[]>();
     }
 
     async getBranchesWithoutExpress(): Promise<Branch[]> {
-        return BranchModel.find({ express: { $exists: false } }).sort({ name: 1 }).lean<Branch[]>();
+        return BranchModel.find({ express: { $exists: false }, guest: { $ne: true } }).sort({ name: 1 }).lean<Branch[]>();
     }
 
     async setGroup(branchId: Id, chatId: number | null): Promise<boolean> {
@@ -98,6 +99,20 @@ class ExpressService {
 
     async getOrderingBranches(supplierId: Id): Promise<Branch[]> {
         return BranchModel.find({ expressSupplierIds: supplierId }).sort({ name: 1 }).lean<Branch[]>();
+    }
+
+    // for the report: branches that can order now, and any branch (a removed guest too) with confirmed orders
+    async getReportBranches(supplierId: Id): Promise<Branch[]> {
+        const ids = await ExpressOrderModel.distinct('orderBranchId', { supplierBranchId: supplierId, status: ExpressOrderStatus.RECEIVED });
+        return BranchModel.find({ $or: [{ expressSupplierIds: supplierId }, { _id: { $in: ids } }] }).sort({ name: 1 }).lean<Branch[]>();
+    }
+
+    // what a branch may order from an Express branch: everything, or for a guest only what the admin ticked
+    async getOrderableProducts(branch: Branch, supplierId: Id): Promise<ExpressProduct[]> {
+        const products = await this.getProducts(supplierId);
+        if (!branch.guest) return products;
+        const allowed = new Set((branch.guestProductIds ?? []).map(id => id.toString()));
+        return products.filter(p => allowed.has(p._id.toString()));
     }
 
     // ---------------- products and prices ----------------

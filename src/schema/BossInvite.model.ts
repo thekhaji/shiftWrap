@@ -6,7 +6,8 @@ const bossInviteSchema = new Schema(
         token: { type: String, required: true, unique: true },
         createdBy: { type: Schema.Types.ObjectId, ref: 'Member', required: true },
         expiresAt: { type: Date, required: true },
-        role: { type: String, enum: ['BOSS', 'DRIVER'], default: 'BOSS' },
+        role: { type: String, enum: ['BOSS', 'DRIVER', 'GUEST'], default: 'BOSS' },
+        guestBranchId: { type: Schema.Types.ObjectId, ref: 'Branch' },   // GUEST: the restaurant the owner will manage
         usedAt: { type: Date },
         usedBy: { type: Number },   // telegramId
     },
@@ -17,7 +18,8 @@ export interface BossInvite {
     token: string;
     createdBy: Types.ObjectId;
     expiresAt: Date;
-    role?: 'BOSS' | 'DRIVER';
+    role?: 'BOSS' | 'DRIVER' | 'GUEST';
+    guestBranchId?: Types.ObjectId;
     usedAt?: Date;
     usedBy?: number;
 }

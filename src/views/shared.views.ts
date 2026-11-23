@@ -1,7 +1,7 @@
 import { Keyboard, InlineKeyboard } from "grammy";
 import { Member } from "../libs/types/member";
 import { hasManagerPermission, hasSalaryAccess } from "../libs/utils/permission";
-import { branchHasExpress } from "../libs/utils/expressAccess";
+import { branchHasExpress, branchIsGuest } from "../libs/utils/expressAccess";
 import { DEFAULT_LANG, LANGUAGES, LANGUAGE_NAMES, Lang, t } from "../libs/i18n";
 
 // a manager looks at the employee menu until they open the manager panel; an admin at the admin panel until they open the boss one
@@ -45,6 +45,13 @@ async function mainMenuKeyboard(member?: Member) {
 
     // a driver only receives Express orders: nothing to tap but the language
     if (member?.type === "DRIVER") return new Keyboard().text(t(lang, 'menu.language')).resized().persistent();
+
+    // the owner of a guest restaurant: Express order (while it has access) and the language, nothing else
+    if (member && hasManagerPermission(member) && await branchIsGuest(member.branchId)) {
+        const keyboard = new Keyboard();
+        if (await branchHasExpress(member.branchId)) keyboard.text(t(lang, 'menu.expressOrder')).row();
+        return keyboard.text(t(lang, 'menu.language')).resized().persistent();
+    }
 
     // a manager or assistant: the manager panel holds the management features
     if (member && hasManagerPermission(member) && managerPanelOf(member) === 'MANAGER') {

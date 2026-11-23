@@ -4,12 +4,15 @@ import { ExpressType } from "../enums/express.enum";
 export interface Branch {
     _id: Types.ObjectId;
     name: string;
-    lat: number;
-    lng: number;
+    lat?: number;                 // a guest restaurant has no location
+    lng?: number;
     orderGroupId?: number;
     express?: ExpressType;                // this branch is Taksim Express or Troy Express
     expressGroupId?: number;              // Express branch only: the group that receives the orders
     expressSupplierIds?: Types.ObjectId[];   // the Express branches this branch may order products from (one or both)
+    guest?: boolean;              // a restaurant that is not ours: it only orders from Express
+    guestProductIds?: Types.ObjectId[];   // guest only: the Express products it may order
+    guestRemoved?: boolean;       // guest only: the admin removed it (history stays)
     productIds?: Types.ObjectId[];  // products this branch storage may order, set by admin
     cleaningGroupId?: number;   // group that receives the weekly cleaning slides
     threadIds?:{

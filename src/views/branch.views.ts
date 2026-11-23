@@ -18,7 +18,7 @@ export function askBranchNameView(lang: Lang) {
 
 export function branchRegisteredView(lang: Lang, branch: Branch) {
     return {
-        text: t(lang, 'branch.registered', { name: branch.name, lat: branch.lat, lng: branch.lng }),
+        text: t(lang, 'branch.registered', { name: branch.name, lat: branch.lat ?? '', lng: branch.lng ?? '' }),
     };
 }
 

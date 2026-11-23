@@ -443,15 +443,15 @@ export function expressController(bot: Bot<MyContext>) {
         const branch = await branchService.getBranchById(member.branchId);
         const supplier = branch ? (await expressService.getSuppliersOf(branch)).find(sp => sp._id.toString() === st.supplierId) : undefined;
         if (!branch || !supplier?.express) return expired();
-        return { member, branch, supplier, products: await expressService.getProducts(supplier._id), st };
+        return { member, branch, supplier, products: await expressService.getOrderableProducts(branch, supplier._id), st };
     }
 
     const pickView = (ctx: MyContext, s: NonNullable<Awaited<ReturnType<typeof orderState>>>, page: number) =>
         expressPickView(ctx.lang, s.supplier.name, s.products, s.st.qty, page);
 
     // the first screen of an order from the chosen Express branch
-    async function startOrder(ctx: MyContext, supplier: Branch) {
-        const products = await expressService.getProducts(supplier._id);
+    async function startOrder(ctx: MyContext, branch: Branch, supplier: Branch) {
+        const products = await expressService.getOrderableProducts(branch, supplier._id);   // a guest sees only what the admin ticked
         if (products.length === 0) {
             await ctx.reply(t(ctx.lang, 'xo.noProducts'));
             return;
@@ -476,7 +476,7 @@ export function expressController(bot: Bot<MyContext>) {
         }
         ctx.session.expressOrder = undefined;
         if (suppliers.length === 1) {
-            await startOrder(ctx, suppliers[0]);
+            await startOrder(ctx, branch!, suppliers[0]);
             return;
         }
         // access to both Express branches: choose where to order from
@@ -494,7 +494,7 @@ export function expressController(bot: Bot<MyContext>) {
         }
         await ctx.answerCallbackQuery();
         await ctx.deleteMessage().catch(() => {});
-        await startOrder(ctx, supplier);
+        await startOrder(ctx, branch!, supplier);
     });
 
     bot.callbackQuery('xo_i', (ctx) => ctx.answerCallbackQuery());
@@ -787,7 +787,7 @@ export function expressController(bot: Bot<MyContext>) {
             await ctx.answerCallbackQuery({ text: t(ctx.lang, 'xr.noExpress'), show_alert: true });
             return;
         }
-        const branches = await expressService.getOrderingBranches(supplier._id);
+        const branches = await expressService.getReportBranches(supplier._id);
         if (branches.length === 0) {
             await ctx.answerCallbackQuery({ text: t(ctx.lang, 'xr.noBranches'), show_alert: true });
             return;
@@ -828,7 +828,7 @@ export function expressController(bot: Bot<MyContext>) {
         const month = Number(picked[2]);
 
         const branches = scope === 'ALL'
-            ? await expressService.getOrderingBranches(supplier._id)
+            ? await expressService.getReportBranches(supplier._id)
             : [await branchService.getBranchById(new Types.ObjectId(scope))].filter((b): b is Branch => !!b);
         const receipts = [];
         for (const b of branches) {

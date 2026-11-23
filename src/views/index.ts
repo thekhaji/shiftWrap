@@ -8,3 +8,4 @@ export * from "./cleaning.views";
 export * from "./express.views";
 
 export * from "./storage.views";
+export * from "./guest.views";

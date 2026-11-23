@@ -29,6 +29,7 @@ import { groupController } from './controllers/group.controller';
 import { cleaningController } from './controllers/cleaning.controller';
 import ExpressService from './models/Express.service';
 import ProductImageService from './models/ProductImage.service';
+import { guestController } from './controllers/guest.controller';
 import { expressController, startExpressConfirmations, startExpressReminders } from './controllers/express.controller';
 
 export interface SessionData {
@@ -45,6 +46,8 @@ export interface SessionData {
         orderLink?: string;
         orderNote?: string;
     };
+    guestFlow?: { step: 'name' | 'access' | 'products' | 'confirm'; name?: string; supplierIds: string[]; productIds: string[]; page: number };   // admin creating a guest restaurant
+    guestRename?: { branchId: string };   // admin renaming one
     editProduct?: { productId: string; field: 'name' | 'link' | 'note' | 'photo'; cardMessageId?: number };   // admin editing one storage product
     cleaning?: {
         place: CleaningPlace;
@@ -102,6 +105,7 @@ async function main() {
     submissionController(bot);
     payrollController(bot);
     expressController(bot);
+    guestController(bot);
 
     await memberService.ensureAdmins(adminTelegramIds());
     startMenuSync(bot);

@@ -18,6 +18,18 @@ class InviteService {
         return token;
     }
 
+    // the owner of a guest restaurant joins with this link
+    async createGuestInvite(createdBy: Types.ObjectId, guestBranchId: Types.ObjectId): Promise<string> {
+        const token = crypto.randomBytes(16).toString('base64url');
+        await BossInviteModel.create({ token, createdBy, role: 'GUEST', guestBranchId, expiresAt: new Date(Date.now() + INVITE_TTL_MS) });
+        return token;
+    }
+
+    // look at a link without using it up
+    async peek(token: string): Promise<BossInvite | null> {
+        return BossInviteModel.findOne({ token, usedAt: null, expiresAt: { $gt: new Date() } }).lean<BossInvite>();
+    }
+
     async isValid(token: string): Promise<boolean> {
         return !!(await BossInviteModel.exists({ token, usedAt: null, expiresAt: { $gt: new Date() } }));
     }

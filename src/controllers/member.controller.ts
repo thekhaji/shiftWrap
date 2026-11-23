@@ -4,9 +4,10 @@ import MemberService from "../models/Member.service";
 import BranchService from "../models/Branch.service";
 import { adminTelegramIds } from "../libs/utils/config";
 import InviteService from "../models/Invite.service";
+import GuestService from "../models/Guest.service";
 import { askBranch, sendPendingState } from "./registration.controller";
 import { Types } from "mongoose";
-import { MemberStatus, MemberType } from "../libs/enums/member.enum";
+import { ManagerRole, MemberStatus, MemberType } from "../libs/enums/member.enum";
 import { askPhoneView, mainMenuView, errorView, userEditView, userPickerView, askEditFieldDetailView, languagePickerView, employeeBranchPickerView, branchMovePickerView } from "../views/index";
 import { allLabels, errorText, t } from "../libs/i18n";
 import Errors, { Message } from "../libs/Errors";
@@ -16,6 +17,7 @@ import { hasManagerPermission, hasSalaryAccess, isAdmin, isBossOrAdmin } from ".
 const memberService = new MemberService();
 const branchService = new BranchService();
 const inviteService = new InviteService();
+const guestService = new GuestService();
 
 const MAX_NAME_LENGTH = 100;
 
@@ -39,13 +41,18 @@ export function memberController(bot: Bot<MyContext>) {
 
         const member = await memberService.getMemberByTelegramId(ctx.from.id);
 
-        // t.me/<bot>?start=boss_<token> or ?start=driver_<token>
+        // t.me/<bot>?start=boss_<token>, ?start=driver_<token> or ?start=guest_<token>
         const token = ctx.match.startsWith('boss_') ? ctx.match.slice('boss_'.length)
-            : ctx.match.startsWith('driver_') ? ctx.match.slice('driver_'.length) : undefined;
+            : ctx.match.startsWith('driver_') ? ctx.match.slice('driver_'.length)
+            : ctx.match.startsWith('guest_') ? ctx.match.slice('guest_'.length) : undefined;
         if (token) {
-            if (!(await inviteService.isValid(token))) {
+            const peeked = await inviteService.peek(token);
+            if (!peeked) {
                 await ctx.reply(t(ctx.lang, 'invite.invalid'));
                 if (!member) return;
+            } else if (peeked.role === 'GUEST' && member) {
+                // a guest owner must be someone new: an existing account is never turned into one
+                await ctx.reply(t(member.language ?? ctx.lang, 'guest.existingMember'));
             } else if (!member) {
                 ctx.session.bossInvite = token; // used when the phone number arrives
             } else if (!isBossOrAdmin(member)) {
@@ -104,6 +111,12 @@ export function memberController(bot: Bot<MyContext>) {
             return;
         }
         const isDriver = invite?.role === 'DRIVER';
+        const isGuest = invite?.role === 'GUEST' && !!invite.guestBranchId;
+        if (isGuest && !(await guestService.getGuest(invite!.guestBranchId!))) {
+            await inviteService.release(inviteToken!);   // the restaurant was removed meanwhile
+            await ctx.reply(t(ctx.lang, 'invite.invalid'));
+            return;
+        }
 
         const configuredAdmin = adminTelegramIds().includes(ctx.from.id);
         const memberInput: MemberInput = {
@@ -112,7 +125,7 @@ export function memberController(bot: Bot<MyContext>) {
             username: ctx.from.username,
             phone: ctx.message.contact.phone_number,
             language: ctx.session.lang ?? ctx.lang,
-            type: configuredAdmin ? MemberType.ADMIN : isDriver ? MemberType.DRIVER : inviteToken ? MemberType.BOSS : MemberType.USER,
+            type: configuredAdmin ? MemberType.ADMIN : isDriver ? MemberType.DRIVER : isGuest ? MemberType.USER : inviteToken ? MemberType.BOSS : MemberType.USER,
             status: configuredAdmin || inviteToken ? MemberStatus.ACTIVE : MemberStatus.PENDING,
         };
 
@@ -120,6 +133,8 @@ export function memberController(bot: Bot<MyContext>) {
         try {
             let result = await memberService.createMember(memberInput);
             if (isDriver && result.type === MemberType.DRIVER) result = await memberService.makeDriver(result.telegramId);
+            // the owner of a guest restaurant: its only manager, with no approval step
+            if (isGuest) result = await memberService.assignManager(result.telegramId, invite!.guestBranchId!, ManagerRole.MAIN);
             if (result.status === MemberStatus.PENDING) {
                 await askBranch(ctx);
                 return;

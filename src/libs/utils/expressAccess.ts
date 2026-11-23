@@ -6,3 +6,9 @@ export async function branchHasExpress(branchId?: Types.ObjectId): Promise<boole
     if (!branchId) return false;
     return !!(await BranchModel.exists({ _id: branchId, expressSupplierIds: { $exists: true, $not: { $size: 0 } } }));
 }
+
+// is this branch a guest restaurant (not one of ours)?
+export async function branchIsGuest(branchId?: Types.ObjectId): Promise<boolean> {
+    if (!branchId) return false;
+    return !!(await BranchModel.exists({ _id: branchId, guest: true }));
+}

@@ -10,12 +10,15 @@ const branchSchema = new Schema(
         },
         lat: {
             type: Number,
-            required: true
+            required: function (this: { guest?: boolean }) { return !this.guest; }   // a guest restaurant has no location
         },
         lng: {
             type: Number,
-            required: true
+            required: function (this: { guest?: boolean }) { return !this.guest; }
         },
+        guest: { type: Boolean },                                          // not our branch: it only orders from Express
+        guestProductIds: [{ type: Schema.Types.ObjectId, ref: 'ExpressProduct' }],   // the Express products a guest may order
+        guestRemoved: { type: Boolean },
         orderGroupId: {
             type: Number,
         },

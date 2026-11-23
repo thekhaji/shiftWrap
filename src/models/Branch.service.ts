@@ -11,8 +11,9 @@ class BranchService {
         this.branchModel = BranchModel;
     }
 
+    // our own branches: guest restaurants are kept out of every branch list, report and check-in
     async getAllBranches(): Promise<Branch[]> {
-        const branches = await this.branchModel.find();
+        const branches = await this.branchModel.find({ guest: { $ne: true } });
         return branches.map(branch => branch.toObject() as Branch);
     }
 
@@ -91,6 +92,7 @@ class BranchService {
         let nearest: { branch: Branch; distance: number } | null = null;
 
         for (const branch of branches) {
+            if (branch.lat === undefined || branch.lng === undefined) continue;   // a guest restaurant has no location
             const distance = this.getDistanceMeters(lat, lng, branch.lat, branch.lng);
             if (distance <= checkInRadiusMeters() && (!nearest || distance < nearest.distance)) {
                 nearest = { branch, distance };
